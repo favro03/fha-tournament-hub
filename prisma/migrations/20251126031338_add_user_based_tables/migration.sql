@@ -1,0 +1,40 @@
+/*
+  Warnings:
+
+  - The primary key for the `Account` table will be changed. If it partially fails, the table could be left without primary key constraint.
+  - You are about to drop the column `id` on the `Account` table. All the data in the column will be lost.
+  - The primary key for the `Session` table will be changed. If it partially fails, the table could be left without primary key constraint.
+  - You are about to drop the column `id` on the `Session` table. All the data in the column will be lost.
+  - Added the required column `updatedAt` to the `Account` table without a default value. This is not possible if the table is not empty.
+  - Added the required column `updatedAt` to the `Session` table without a default value. This is not possible if the table is not empty.
+
+*/
+-- DropIndex
+DROP INDEX "Account_provider_providerAccountId_key";
+
+-- DropIndex
+DROP INDEX "Session_sessionToken_key";
+
+-- AlterTable
+ALTER TABLE "Account" DROP CONSTRAINT "Account_pkey",
+DROP COLUMN "id",
+ADD COLUMN     "createdAt" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL,
+ADD CONSTRAINT "Account_pkey" PRIMARY KEY ("provider", "providerAccountId");
+
+-- AlterTable
+ALTER TABLE "Session" DROP CONSTRAINT "Session_pkey",
+DROP COLUMN "id",
+ADD COLUMN     "createdAt" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL,
+ALTER COLUMN "expires" SET DATA TYPE TIMESTAMP(6),
+ADD CONSTRAINT "Session_pkey" PRIMARY KEY ("sessionToken");
+
+-- CreateTable
+CREATE TABLE "VerificationToken" (
+    "identifier" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "expires" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "VerificationToken_pkey" PRIMARY KEY ("identifier","token")
+);
