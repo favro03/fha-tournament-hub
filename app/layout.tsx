@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Providers from "./providers";
 import { Inter, Oswald } from "next/font/google";
 import "./assets/styles/globals.css";
 import { APP_NAME, APP_DESCRIPTION, SERVER_URL } from "@/lib/constants";
@@ -34,7 +35,9 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${oswald.variable} antialiased`}
       >
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

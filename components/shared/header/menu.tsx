@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button';
-
 import Link from 'next/link';
 import { EllipsisVertical,UserIcon,BedSingle,Utensils,NotebookText,Network, House} from 'lucide-react';
 import {
@@ -9,7 +8,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-// import UserButton from './user-button';
+import UserButton from './user-button';
 
 
 const Menu = () => {
@@ -46,12 +45,7 @@ const Menu = () => {
             <span>Rules</span>
           </Link>
         </Button>
-        <Button asChild variant='ghost' className='px-2 py-1 h-auto'>
-          <Link href='/sign-in' className='flex items-center gap-1.5 text-sm whitespace-nowrap'>
-            <UserIcon className='h-4 w-4' />
-            <span>Admin</span>
-          </Link>
-        </Button>
+       <UserButton />
       </nav>
       
       {/* Medium screen - Icon only navigation */}
@@ -86,12 +80,7 @@ const Menu = () => {
             <span className='sr-only'>Rules</span>
           </Link>
         </Button>
-        <Button asChild variant='ghost' size='sm' className='p-2'>
-          <Link href='/sign-in' className='flex items-center'>
-            <UserIcon className='h-4 w-4' />
-            <span className='sr-only'>Admin</span>
-          </Link>
-        </Button>
+       <UserButton />
       </nav>
 
       {/* Mobile navigation */}

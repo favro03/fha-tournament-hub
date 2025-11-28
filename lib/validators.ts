@@ -16,3 +16,9 @@ export const insertRestaurantSchema = z.object({
     image: z.string().min(1, 'Restaurant must have an image'),
     website: z.string().min(3,"Website must be a valid URL").optional(),
 })
+
+//Schema for siging users in
+export const signInFormSchema = z.object({
+    username: z.string().min(3, "Username is required"),
+    password: z.string().min(6, "Password must be at least 6 characters long"),
+})

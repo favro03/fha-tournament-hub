@@ -8,6 +8,10 @@ async function main() {
     try {
         await prisma.hotel.deleteMany();
         await prisma.restaurant.deleteMany();
+        await prisma.account.deleteMany();
+        await prisma.session.deleteMany();
+        await prisma.verificationToken.deleteMany();
+        await prisma.user.deleteMany();
 
         await prisma.hotel.createMany({
             data: sampleData.hotels,
@@ -16,6 +20,8 @@ async function main() {
         await prisma.restaurant.createMany({
             data: sampleData.restaurants,
         });
+
+        await prisma.user.createMany({ data: sampleData.users });
 
         console.log('Database seeded successfully!');
     } catch (error) {
