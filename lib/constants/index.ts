@@ -6,3 +6,12 @@ export const signIndefaultvalues = {
     username: '',
     password: ''
 }
+
+export const hotelDefaultValues = {
+    name: '',
+    address: '',
+    phone: '',
+    images: '',
+    website: '',
+    
+}

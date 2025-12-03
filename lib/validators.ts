@@ -8,6 +8,8 @@ export const insertHotelSchema = z.object({
     image: z.string().min(1, 'Hotel must have an image'),
     website: z.string().min(3,"Website must be a valid URL").optional(),
 })
+//Schema for updating hotels
+export const updateHotelSchema = insertHotelSchema;
 
 export const insertRestaurantSchema = z.object({
     name: z.string().min(3, "Restaurant name is required"),
