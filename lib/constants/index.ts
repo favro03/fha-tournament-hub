@@ -15,3 +15,12 @@ export const hotelDefaultValues = {
     website: '',
     
 }
+
+export const restaurantDefaultValues = {
+    name: '',
+    address: '',
+    description: '',
+    images: '',
+    website: '',
+    
+}

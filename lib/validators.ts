@@ -11,6 +11,7 @@ export const insertHotelSchema = z.object({
 //Schema for updating hotels
 export const updateHotelSchema = insertHotelSchema;
 
+//Schema for inserting restaurants
 export const insertRestaurantSchema = z.object({
     name: z.string().min(3, "Restaurant name is required"),
     description: z.string().min(3, "Description is required"),
@@ -19,8 +20,15 @@ export const insertRestaurantSchema = z.object({
     website: z.string().min(3,"Website must be a valid URL").optional(),
 })
 
+//Schema for updating restaurants
+export const updateRestaurantSchema = insertRestaurantSchema;
+
 //Schema for siging users in
 export const signInFormSchema = z.object({
     username: z.string().min(3, "Username is required"),
     password: z.string().min(6, "Password must be at least 6 characters long"),
 })
+
+
+
+

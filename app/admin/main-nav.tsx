@@ -26,11 +26,11 @@ const links = [
         href: '/admin/restaurants'
 
     },
-     {
-        title: 'Users',
-        href: '/admin/users'
+    //  {
+    //     title: 'Users',
+    //     href: '/admin/users'
 
-    },
+    // },
 ]
 
 const MainNav = ({className, ... props}: React.HTMLAttributes<HTMLElement>) => {
