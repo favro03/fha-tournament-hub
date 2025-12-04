@@ -22,6 +22,7 @@ export async function createHotel(data: z.infer<typeof insertHotelSchema>) {
     };
     await prisma.hotel.create({ data: hotelData });
     revalidatePath('/admin/hotels');
+      revalidatePath('/hotels');
 
     return {
       success: true,
@@ -49,6 +50,7 @@ export async function updateHotel(id: string, data: z.infer<typeof updateHotelSc
     });
 
     revalidatePath('/admin/hotels');
+      revalidatePath('/hotels');
 
     return {
       success: true,
@@ -66,6 +68,7 @@ export async function deleteHotel(id: string) {
       await prisma.hotel.delete({ where: { id: hotelId } });
 
       revalidatePath('/admin/hotels');
+        revalidatePath('/hotels');
       return {
         success: true,
         message: 'Hotel deleted successfully',
