@@ -10,7 +10,7 @@ const Homepage = () => {
         <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 lg:gap-8 max-w-6xl mx-auto">
           {/* Bracket Button on the left */}
           <div className="flex justify-center lg:justify-center">
-            <Link href="/bracket" className="w-full max-w-[320px]">
+            <Link href="/brackets" className="w-full max-w-[320px]">
               <Button
                 className="bg-cover bg-white bg-center bg-no-repeat hover:scale-105 text-black rounded-lg px-10 py-8 transition-all duration-200 shadow-lg min-h-[126px] w-full flex flex-col items-center justify-end space-y-3 lg:min-h-[272px]"
                 style={{ backgroundImage: 'url(/images/bracketBtn.png)' }}
