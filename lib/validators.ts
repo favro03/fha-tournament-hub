@@ -31,4 +31,19 @@ export const signInFormSchema = z.object({
 
 
 
+//Schema for inserting bracket
+export const insertBracketSchema = z.object({
+    name: z.string().min(3, "Tournament name is required"),
+    youthLevel: z.string().min(3, "Mite/Squirt/Pwee/Bantam is required"),
+    date: z.string().min(3, "Valid date: Month d-d year is required"),
+    image: z.string().min(1, 'Tournament must have an image'),
+})
+
+//Schema for updating bracket
+export const updateBracketSchema = insertBracketSchema;
+
+
+
+
+
 

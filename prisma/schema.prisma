@@ -71,3 +71,13 @@ model VerificationToken {
 
   @@id([identifier, token])
 }
+
+model Bracket {
+  id         Int      @id @default(autoincrement())
+  name       String
+  youthLevel String
+  date       String
+  image      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

@@ -3,11 +3,11 @@ import RestaurantForm from "./restaurant-form";
 
 
 export const metadata: Metadata = {
-    title: 'Create Hotel',
+    title: 'Create Restaurant',
 }
 
 
-const CreateHotelPage = () => {
+const CreateRestaurantPage = () => {
     return ( 
         <>
         <h2 className="h2-bold">Create Restaurant</h2>
@@ -18,4 +18,4 @@ const CreateHotelPage = () => {
      );
 }
  
-export default CreateHotelPage;
+export default CreateRestaurantPage;

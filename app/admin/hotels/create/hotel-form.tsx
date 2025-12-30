@@ -182,8 +182,8 @@ const HotelForm = ({type, hotel, hotelId}: {
                         <Image src={images} alt="hotel image" className="w-20 h-20 object-cover object-center rounded-sm" width={100} height={100}/>
                       )}
                       <FormControl>
-                        <UploadButton endpoint='imageUploader' onClientUploadComplete={(res: {url: string}[]) => {
-                          form.setValue('image', res[0].url)
+                        <UploadButton endpoint='imageUploader' onClientUploadComplete={(res: {ufsUrl: string}[]) => {
+                          form.setValue('image', res[0].ufsUrl)
                         }}
                         onUploadError={(error: Error) => {
                           toast.error(`ERROR! ${error.message}`)
