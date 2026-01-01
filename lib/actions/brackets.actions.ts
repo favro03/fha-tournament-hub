@@ -62,6 +62,11 @@ export async function updateBracket(id: string, data: z.infer<typeof updateBrack
     });
     if (!bracketExists) throw new Error("Bracket not found");
 
+    // If games are provided, replace all games for this bracket
+    if (Array.isArray(updateData.games)) {
+      // Delete existing games for this bracket
+      await prisma.game.deleteMany({ where: { bracketId } });
+    }
     await prisma.bracket.update({
       where: { id: bracketId },
       data: {
@@ -69,7 +74,21 @@ export async function updateBracket(id: string, data: z.infer<typeof updateBrack
         youthLevel: updateData.youthLevel,
         date: updateData.date,
         image: updateData.image && updateData.image.trim() !== '' ? updateData.image : '',
-        // Do not include games here
+        games: Array.isArray(updateData.games) && updateData.games.length > 0
+          ? {
+              create: updateData.games.map(g => ({
+                day: g.day ?? '',
+                date: g.date ?? '',
+                time: g.time ?? '',
+                location: g.location ?? '',
+                homeTeam: g.homeTeam ?? '',
+                awayTeam: g.awayTeam ?? '',
+                homeScore: g.homeScore ?? 0,
+                awayScore: g.awayScore ?? 0,
+                label: g.label ?? undefined,
+              })),
+            }
+          : undefined,
       },
     });
 
