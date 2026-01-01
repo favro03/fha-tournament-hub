@@ -1,4 +1,20 @@
 import {z} from 'zod';
+// Schema for a team
+export const teamSchema = z.object({
+    id: z.number().int().optional(),
+    teamName: z.string().min(1, 'Team name is required'),
+    bracketId: z.number().int().optional(),
+});
+//Schema for adding game times
+export const timeSchema = z.object({
+    id: z.number().int().optional(),
+    day: z.string().optional(),
+    date: z.string().optional(),
+    timeSlots: z.string().optional(),
+    location: z.string().optional(),
+   gameType: z.string().optional(),
+    type: z.string().optional(),
+});
 
 //Schema for inserting hotels
 export const insertHotelSchema = z.object({
@@ -50,6 +66,8 @@ export const insertBracketSchema = z.object({
     date: z.string().optional(),
     image: z.string().optional(),
     games: z.array(gameSchema).optional(),
+    teams: z.array(teamSchema).optional(),
+    times: z.array(timeSchema).optional(),
 });
 
 // Schema for updating bracket

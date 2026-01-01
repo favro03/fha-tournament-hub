@@ -28,9 +28,23 @@ export const restaurantDefaultValues = {
 }
 
 export const bracketDefaultValues = {
-  name: '',
-  youthLevel: '',
-  date: '',
-  images: '',
+    name: '',
+    youthLevel: '',
+    date: '',
+    image: '',
     games: [],
+    teams: [{ teamName: '' }],
+    times: [{ day: '', date: '', timeSlots: '', location: '', gameType: '', type: '' }],
 };
+
+export const teamDefaultValues = {
+    teamName:'',
+}
+export const timeDefaultValues = {
+    day: '',
+    date: '',
+    timeSlots: '',
+    location: '',
+    gameType:'',
+    type: '',
+}

@@ -17,6 +17,31 @@ import { UploadButton } from "@/lib/uploadthing";
 import { Card, CardContent } from "@/components/ui/card";
 import Image from "next/image";
 
+// Helper to parse date and get day of week
+function getDayOfWeek(dateString: string): string {
+  // Accept formats like 1/1/26, 01/01/2026, 1/1//2026
+  const cleaned = dateString.replace(/\/+/g, '/').replace(/\/+$/, '');
+  // Try to normalize year
+  const parts = cleaned.split('/');
+  if (parts.length === 3) {
+    const [month, day] = parts;
+    let year = parts[2];
+    if (year.length === 2) year = '20' + year;
+    if (year.length === 0 && parts[2] === '') year = '2026'; // fallback for 1/1//2026
+    const iso = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const d = new Date(iso);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', { weekday: 'long' });
+    }
+  }
+  // Try Date.parse fallback
+  const d = new Date(dateString);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleDateString('en-US', { weekday: 'long' });
+  }
+  return '';
+}
+
 
 const BracketForm = ({type, bracket, bracketId}: {
     type: 'Create' | 'Update',
@@ -26,22 +51,67 @@ const BracketForm = ({type, bracket, bracketId}: {
     const router = useRouter();
     // removed unused imageUploading state
 
+    // Ensure all times fields are always controlled
+    const safeBracket = bracket && type === 'Update'
+      ? {
+          ...bracket,
+          times: Array.isArray(bracket.times)
+            ? bracket.times.map(ts => ({
+                day: ts.day ?? '',
+                date: ts.date ?? '',
+                timeSlots: ts.timeSlots ?? '',
+                location: ts.location ?? '',
+                gameType: ts.gameType ?? '',
+                type: ts.type ?? '',
+              }))
+            : [],
+          teams: Array.isArray(bracket.teams)
+            ? bracket.teams.map(t => ({ teamName: t.teamName ?? '' }))
+            : [],
+          games: Array.isArray(bracket.games)
+            ? bracket.games.map(g => ({
+                day: g.day ?? '',
+                date: g.date ?? '',
+                time: g.time ?? '',
+                location: g.location ?? '',
+                homeTeam: g.homeTeam ?? '',
+                awayTeam: g.awayTeam ?? '',
+                homeScore: g.homeScore ?? 0,
+                awayScore: g.awayScore ?? 0,
+                label: g.label ?? '',
+              }))
+            : [],
+        }
+      : bracketDefaultValues;
+
     const form = useForm<z.infer<typeof insertBracketSchema>>({
       resolver:
         type === 'Update'
           ? zodResolver(updateBracketSchema)
           : zodResolver(insertBracketSchema),
-      defaultValues:
-        bracket && type === 'Update' ? bracket : bracketDefaultValues,
+      defaultValues: safeBracket,
     });
 
 
     const images = form.watch('image');
 
-    // Single games array for both main and pool play games
+
+    // Teams array for team names
+    const { fields: teamFields, append: appendTeam, remove: removeTeam, replace: replaceTeams } = useFieldArray({
+      control: form.control,
+      name: 'teams',
+    });
+
+    // Games array for both main and pool play games
     const { fields: gameFields, append: appendGame, remove: removeGame } = useFieldArray({
       control: form.control,
       name: 'games',
+    });
+
+    // Time slots array
+    const { fields: timeFields, append: appendTime, remove: removeTime, replace: replaceTimes } = useFieldArray({
+      control: form.control,
+      name: 'times',
     });
 
     const onSubmit: SubmitHandler<z.infer<typeof insertBracketSchema>> = async (values) => {
@@ -80,7 +150,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                 <FormItem className='w-full'>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <Input placeholder='Enter bracket name' {...field} />
+                    <Input placeholder='Enter bracket name' {...field} value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -94,7 +164,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                 <FormItem className='w-full'>
                   <FormLabel>Division</FormLabel>
                   <FormControl>
-                    <Input placeholder='Enter division (Mite, Squirt, Peewee, Bantam)' {...field} />
+                    <Input placeholder='Enter division (Mite, Squirt, Peewee, Bantam)' {...field} value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -109,12 +179,13 @@ const BracketForm = ({type, bracket, bracketId}: {
               <FormItem className='w-full'>
                 <FormLabel>Date</FormLabel>
                 <FormControl>
-                  <Input placeholder='Enter date (Month d-d year)' {...field} />
+                  <Input placeholder='Enter date (Month d-d year)' {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
+
           {/* Image Upload */}
           <div className="upload-field flex flex-col gap-5 md:flex-row ">
             <FormField
@@ -147,8 +218,190 @@ const BracketForm = ({type, bracket, bracketId}: {
             />
           </div>
 
+          {/* Select number of teams */}
+          <div className="flex flex-col gap-4 mt-4">
+            <label htmlFor="numTeams" className="font-medium">Select number of teams in tournament</label>
+            <select
+              id="numTeams"
+              className="border rounded px-3 py-2 w-40"
+              value={teamFields.length || ''}
+              onChange={e => {
+                const num = parseInt(e.target.value, 10);
+                if (!isNaN(num)) {
+                  // Replace teams array with correct length
+                  replaceTeams(Array.from({ length: num }, (_, i) => ({ teamName: '' })));
+                } else {
+                  replaceTeams([]);
+                }
+              }}
+            >
+              <option value="">Select...</option>
+              {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            {/* Team name inputs */}
+            {teamFields.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {teamFields.map((field, idx) => (
+                  <FormField
+                    key={field.id}
+                    control={form.control}
+                    name={`teams.${idx}.teamName`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Team {idx + 1} Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder={`Enter team ${idx + 1} name`} value={field.value ?? ""} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Select number of time slots */}
+          <div className="flex flex-col gap-4 mt-4">
+            <label htmlFor="numTimes" className="font-medium">Select number of time slots</label>
+            <select
+              id="numTimes"
+              className="border rounded px-3 py-2 w-40"
+              value={timeFields.length || ''}
+              onChange={e => {
+                const num = parseInt(e.target.value, 10);
+                if (!isNaN(num)) {
+                  // Replace times array with correct length
+                  replaceTimes(Array.from({ length: num }, () => ({ day: '', date: '', timeSlots: '', location: '' })));
+                } else {
+                  replaceTimes([]);
+                }
+              }}
+            >
+              <option value="">Select...</option>
+              {Array.from({ length: 99 }, (_, i) => i + 2).map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            {/* Time slot inputs */}
+            {timeFields.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {timeFields.map((field, idx) => (
+                    <div key={field.id} className="border p-4 rounded-md relative space-y-2">
+                      <div className="font-semibold mb-2">Game {idx + 1}</div>
+                      <FormField
+                        control={form.control}
+                        name={`times.${idx}.date`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Date</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                placeholder={`Enter date`}
+                                value={field.value ?? ""}
+                                onChange={e => {
+                                  field.onChange(e);
+                                  const day = getDayOfWeek(e.target.value);
+                                  form.setValue(`times.${idx}.day`, day);
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`times.${idx}.day`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Day</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder={`Enter day`} value={field.value ?? ""} readOnly />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                   
+                    <FormField
+                      control={form.control}
+                      name={`times.${idx}.timeSlots`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Time</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder={`Enter time`} value={field.value ?? ""} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`times.${idx}.location`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Location</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder={`Enter location`} value={field.value ?? ""} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex gap-4 items-center mt-2">
+                      <FormField
+                        control={form.control}
+                        name={`times.${idx}.gameType`}
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center gap-2">
+                            <FormLabel>Game Type</FormLabel>
+                            <FormControl>
+                              <select
+                                className="border rounded px-3 py-2"
+                                value={field.value ?? ""}
+                                onChange={e => field.onChange(e.target.value)}
+                              >
+                                <option value="">Select...</option>
+                                <option value="bracketPlay">Bracket Play</option>
+                                <option value="poolPlay">Pool Play</option>
+                              </select>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    {/* Only show type if gameType is poolPlay */}
+                    {form.watch(`times.${idx}.gameType`) === 'poolPlay' && (
+                      <FormField
+                        control={form.control}
+                        name={`times.${idx}.type`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Type</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="3rd, consolation, championship" value={field.value ?? ""} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                    <Button type="button" variant="destructive" size="sm" className="absolute top-2 right-2" onClick={() => removeTime(idx)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Main Bracket Games (no label) */}
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">Main Bracket Games</h3>
               <Button type="button" onClick={() => appendGame({ day: '', date: '', time: '', location: '', homeTeam: '', awayTeam: '', homeScore: 0, awayScore: 0, label: undefined })}>
@@ -159,34 +412,43 @@ const BracketForm = ({type, bracket, bracketId}: {
             {gameFields.filter(g => !g.label).map((field, idx) => {
               const gameIdx = gameFields.findIndex(f => f.id === field.id);
               return (
-              <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                  <FormField
-                    control={form.control}
-                    name={`games.${gameIdx}.day`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Day</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="Day" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`games.${gameIdx}.date`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Date</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="Date" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <div key={field.id} className="border p-4 rounded-md relative space-y-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                    <FormField
+                      control={form.control}
+                      name={`games.${gameIdx}.day`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Day</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Day" value={field.value ?? ""} readOnly />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`games.${gameIdx}.date`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Date</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="Date"
+                              value={field.value ?? ""}
+                              onChange={e => {
+                                field.onChange(e);
+                                const day = getDayOfWeek(e.target.value);
+                                form.setValue(`games.${gameIdx}.day`, day);
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   <FormField
                     control={form.control}
                     name={`games.${gameIdx}.time`}
@@ -194,7 +456,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                       <FormItem>
                         <FormLabel>Time</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Time" />
+                          <Input {...field} placeholder="Time" value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -207,7 +469,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                       <FormItem>
                         <FormLabel>Location</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Location" />
+                          <Input {...field} placeholder="Location" value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -220,7 +482,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                       <FormItem>
                         <FormLabel>Home Team</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Home Team" />
+                          <Input {...field} placeholder="Home Team" value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -233,7 +495,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                       <FormItem>
                         <FormLabel>Away Team</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Away Team" />
+                          <Input {...field} placeholder="Away Team" value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -246,7 +508,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                       <FormItem>
                         <FormLabel>Home Score</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} placeholder="Home Score" />
+                          <Input type="number" {...field} placeholder="Home Score" value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -259,7 +521,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                       <FormItem>
                         <FormLabel>Away Score</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} placeholder="Away Score" />
+                          <Input type="number" {...field} placeholder="Away Score" value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -272,10 +534,10 @@ const BracketForm = ({type, bracket, bracketId}: {
               </div>
             );
             })}
-          </div>
+          </div> */}
 
           {/* Pool Play Games (with label) */}
-          <div className="space-y-4 mt-8">
+          {/* <div className="space-y-4 mt-8">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">Pool Play Games</h3>
               <Button type="button" onClick={() => appendGame({ day: '', date: '', time: '', location: '', homeTeam: '', awayTeam: '', homeScore: 0, awayScore: 0, label: 'Consolation, Campoionship' })}>
@@ -295,7 +557,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                         <FormItem>
                           <FormLabel>Label</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="Label (e.g. Consolation, 3rd Place, Championship)" />
+                            <Input {...field} placeholder="Label (e.g. Consolation, 3rd Place, Championship)" value={field.value ?? ""} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -412,7 +674,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                 </div>
               );
             })}
-          </div>
+          </div> */}
 
           {/* Create Button */}
           <div>

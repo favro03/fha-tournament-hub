@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Times" ADD COLUMN     "bracketPlay" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "poolPlay" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "type" TEXT NOT NULL DEFAULT '';
