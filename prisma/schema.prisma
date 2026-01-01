@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Hotel {
@@ -78,6 +77,22 @@ model Bracket {
   youthLevel String
   date       String
   image      String
+  games      Game[] // New relation to games
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model Game {
+  id        Int     @id @default(autoincrement())
+  bracket   Bracket @relation(fields: [bracketId], references: [id])
+  bracketId Int
+  day       String
+  date      String
+  time      String
+  location  String
+  homeTeam  String
+  awayTeam  String
+  homeScore Int
+  awayScore Int
+  label     String? // For pool play (e.g., Consolation, 3rd Place, etc.)
 }

@@ -18,11 +18,21 @@ const AdminBracketUpdatePage = async (props: {
     const bracket = await getBracketById(id);
 
     if(!bracket) return notFound();
+    // Map games so label is never null
+    const safeBracket = {
+        ...bracket,
+        games: Array.isArray(bracket.games)
+            ? bracket.games.map(g => ({
+                ...g,
+                label: g.label === null ? undefined : g.label
+            }))
+            : [],
+    };
     return ( 
         <div className="space-y-8 max-w-5xl mx-auto">
         <h1 className="h2-bold">Update Bracket</h1>
 
-        <BracketForm type="Update" bracket={bracket} bracketId={bracket.id.toString()}/>
+        <BracketForm type="Update" bracket={safeBracket} bracketId={bracket.id.toString()}/>
         </div>
      );
 }

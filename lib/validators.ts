@@ -29,17 +29,30 @@ export const signInFormSchema = z.object({
     password: z.string().min(6, "Password must be at least 6 characters long"),
 })
 
+// Schema for inserting/updating a game
+export const gameSchema = z.object({
+    id: z.number().int().optional(),
+    day: z.string().optional(),
+    date: z.string().optional(),
+    time: z.string().optional(),
+    location: z.string().optional(),
+    homeTeam: z.string().optional(),
+    awayTeam: z.string().optional(),
+    homeScore: z.number().int().optional(),
+    awayScore: z.number().int().optional(),
+    label: z.string().optional(), // For pool play (e.g., Consolation, 3rd Place, etc.)
+});
 
-
-//Schema for inserting bracket
+// Schema for inserting bracket with games (only name required)
 export const insertBracketSchema = z.object({
     name: z.string().min(3, "Tournament name is required"),
-    youthLevel: z.string().min(3, "Mite/Squirt/Pwee/Bantam is required"),
-    date: z.string().min(3, "Valid date: Month d-d year is required"),
-    image: z.string().min(1, 'Tournament must have an image'),
-})
+    youthLevel: z.string().optional(),
+    date: z.string().optional(),
+    image: z.string().optional(),
+    games: z.array(gameSchema).optional(),
+});
 
-//Schema for updating bracket
+// Schema for updating bracket
 export const updateBracketSchema = insertBracketSchema;
 
 
