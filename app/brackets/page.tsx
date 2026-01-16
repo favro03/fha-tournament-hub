@@ -14,6 +14,7 @@ const Brackets = async () => {
                     label: g.label === null ? undefined : g.label
                 }))
                 : [],
+            times: Array.isArray(bracket.times) ? bracket.times : [],
         }))
         : [];
 
