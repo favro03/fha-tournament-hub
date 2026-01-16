@@ -11,6 +11,7 @@ export async function getBrackets() {
   const data = await prisma.bracket.findMany({
     include: { games: true, teams: true, times: true },
   });
+
   return convertToPlainObject(data);
 }
 
@@ -24,7 +25,7 @@ export async function createBracket(data: z.infer<typeof insertBracketSchema> & 
       youthLevel: bracket.youthLevel ?? '',
       date: bracket.date ?? '',
       image: bracket.image && bracket.image.trim() !== '' ? bracket.image : '',
-      bracketName: bracket.name, // Add bracketName, default to name
+      bracketName: data.bracketName ?? "",
       games: games && Array.isArray(games) && games.length > 0
         ? {
             create: games.map(g => ({
@@ -99,7 +100,7 @@ export async function updateBracket(id: string, data: z.infer<typeof updateBrack
         youthLevel: updateData.youthLevel,
         date: updateData.date,
         image: updateData.image && updateData.image.trim() !== '' ? updateData.image : '',
-        bracketName: updateData.name, // Add bracketName, default to name
+        bracketName: data.bracketName, // Use bracketName from input data
         games: Array.isArray(updateData.games) && updateData.games.length > 0
           ? {
               create: updateData.games.map(g => ({

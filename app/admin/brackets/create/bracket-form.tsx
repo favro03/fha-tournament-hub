@@ -217,97 +217,149 @@ const BracketForm = ({type, bracket, bracketId}: {
               )}
             />
           </div>
+<FormField
+  control={form.control}
+  name="bracketName"
+  render={({ field }) => (
+    <FormItem className="flex flex-row items-center gap-2">
+      <FormLabel>Build your own bracket</FormLabel>
+      <FormControl>
+        <select
+          className="border rounded px-3 py-2"
+          value={field.value ?? ""}
+          onChange={e => field.onChange(e.target.value)}
+        >
+          <option value="">Select...</option>
+          <option value="Jamboree">Jamboree</option>
+          <option value="Single Elimination + Consolation">Single Elimination + Consolation</option>
+          <option value="Pool Play + Championship Bracket">Pool Play + Championship Bracket</option>
+        </select>
+      </FormControl>
+      <FormMessage />
+    </FormItem>
+  )}
+/>
 
-          {/* Select number of teams */}
-          <div className="flex flex-col gap-4 mt-4">
-            <label htmlFor="numTeams" className="font-medium">Select number of teams in tournament</label>
-            <select
-              id="numTeams"
-              className="border rounded px-3 py-2 w-40"
-              value={teamFields.length || ''}
-              onChange={e => {
-                const num = parseInt(e.target.value, 10);
-                if (!isNaN(num)) {
-                  // Replace teams array with correct length
-                  replaceTeams(Array.from({ length: num }, (_, i) => ({ teamName: '' })));
-                } else {
-                  replaceTeams([]);
-                }
-              }}
-            >
-              <option value="">Select...</option>
-              {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-            {/* Team name inputs */}
-            {teamFields.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {teamFields.map((field, idx) => (
-                  <FormField
-                    key={field.id}
-                    control={form.control}
-                    name={`teams.${idx}.teamName`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Team {idx + 1} Name</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder={`Enter team ${idx + 1} name`} value={field.value ?? ""} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+          {/* Select number of teams - only show if bracketName is 'Pool Play + Championship Bracket' */}
+          {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
+            <div className="flex flex-col gap-4 mt-4">
+              <label htmlFor="numTeams" className="font-medium">Select number of teams in tournament</label>
+              <select
+                id="numTeams"
+                className="border rounded px-3 py-2 w-40"
+                value={teamFields.length || ''}
+                onChange={e => {
+                  const num = parseInt(e.target.value, 10);
+                  if (!isNaN(num)) {
+                    // Replace teams array with correct length
+                    replaceTeams(Array.from({ length: num }, (_, i) => ({ teamName: '' })));
+                  } else {
+                    replaceTeams([]);
+                  }
+                }}
+              >
+                <option value="">Select...</option>
+                {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
+                  <option key={n} value={n}>{n}</option>
                 ))}
-              </div>
-            )}
-          </div>
+              </select>
+              {/* Team name inputs */}
+              {teamFields.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {teamFields.map((field, idx) => (
+                    <FormField
+                      key={field.id}
+                      control={form.control}
+                      name={`teams.${idx}.teamName`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Team {idx + 1} Name</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder={`Enter team ${idx + 1} name`} value={field.value ?? ""} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Select number of time slots */}
-          <div className="flex flex-col gap-4 mt-4">
-            <label htmlFor="numTimes" className="font-medium">Select number of time slots</label>
-            <select
-              id="numTimes"
-              className="border rounded px-3 py-2 w-40"
-              value={timeFields.length || ''}
-              onChange={e => {
-                const num = parseInt(e.target.value, 10);
-                if (!isNaN(num)) {
-                  // Replace times array with correct length
-                  replaceTimes(Array.from({ length: num }, () => ({ day: '', date: '', timeSlots: '', location: '' })));
-                } else {
-                  replaceTimes([]);
-                }
-              }}
-            >
-              <option value="">Select...</option>
-              {Array.from({ length: 99 }, (_, i) => i + 2).map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-            {/* Time slot inputs */}
-            {timeFields.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {timeFields.map((field, idx) => (
-                    <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                      <div className="font-semibold mb-2">Game {idx + 1}</div>
+          {/* Select number of time slots - only show if bracketName is 'Pool Play + Championship Bracket' */}
+          {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
+            <div className="flex flex-col gap-4 mt-4">
+              <label htmlFor="numTimes" className="font-medium">Select number of time slots</label>
+              <select
+                id="numTimes"
+                className="border rounded px-3 py-2 w-40"
+                value={timeFields.length || ''}
+                onChange={e => {
+                  const num = parseInt(e.target.value, 10);
+                  if (!isNaN(num)) {
+                    // Replace times array with correct length
+                    replaceTimes(Array.from({ length: num }, () => ({ day: '', date: '', timeSlots: '', location: '' })));
+                  } else {
+                    replaceTimes([]);
+                  }
+                }}
+              >
+                <option value="">Select...</option>
+                {Array.from({ length: 99 }, (_, i) => i + 2).map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              {/* Time slot inputs */}
+              {timeFields.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {timeFields.map((field, idx) => (
+                      <div key={field.id} className="border p-4 rounded-md relative space-y-2">
+                        <div className="font-semibold mb-2">Game {idx + 1}</div>
+                        <FormField
+                          control={form.control}
+                          name={`times.${idx}.date`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Date</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  placeholder={`Enter date`}
+                                  value={field.value ?? ""}
+                                  onChange={e => {
+                                    field.onChange(e);
+                                    const day = getDayOfWeek(e.target.value);
+                                    form.setValue(`times.${idx}.day`, day);
+                                  }}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`times.${idx}.day`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Day</FormLabel>
+                              <FormControl>
+                                <Input {...field} placeholder={`Enter day`} value={field.value ?? ""} readOnly />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                     
                       <FormField
                         control={form.control}
-                        name={`times.${idx}.date`}
+                        name={`times.${idx}.timeSlots`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Date</FormLabel>
+                            <FormLabel>Time</FormLabel>
                             <FormControl>
-                              <Input
-                                {...field}
-                                placeholder={`Enter date`}
-                                value={field.value ?? ""}
-                                onChange={e => {
-                                  field.onChange(e);
-                                  const day = getDayOfWeek(e.target.value);
-                                  form.setValue(`times.${idx}.day`, day);
-                                }}
-                              />
+                              <Input {...field} placeholder={`Enter time`} value={field.value ?? ""} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -315,99 +367,73 @@ const BracketForm = ({type, bracket, bracketId}: {
                       />
                       <FormField
                         control={form.control}
-                        name={`times.${idx}.day`}
+                        name={`times.${idx}.location`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Day</FormLabel>
+                            <FormLabel>Location</FormLabel>
                             <FormControl>
-                              <Input {...field} placeholder={`Enter day`} value={field.value ?? ""} readOnly />
+                              <Input {...field} placeholder={`Enter location`} value={field.value ?? ""} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                   
-                    <FormField
-                      control={form.control}
-                      name={`times.${idx}.timeSlots`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Time</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder={`Enter time`} value={field.value ?? ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                      <div className="flex gap-4 items-center mt-2">
+                        <FormField
+                          control={form.control}
+                          name={`times.${idx}.gameType`}
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center gap-2">
+                              <FormLabel>Game Type</FormLabel>
+                              <FormControl>
+                                <select
+                                  className="border rounded px-3 py-2"
+                                  value={field.value ?? ""}
+                                  onChange={e => field.onChange(e.target.value)}
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="bracketPlay">Bracket Play</option>
+                                  <option value="poolPlay">Pool Play</option>
+                                </select>
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      {/* Only show type if gameType is bracketPlay */}
+                      {form.watch(`times.${idx}.gameType`) === 'bracketPlay' && (
+                        <FormField
+                          control={form.control}
+                          name={`times.${idx}.type`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Type</FormLabel>
+                              <FormControl>
+                                <select
+                                  className="border rounded px-3 py-2"
+                                  value={field.value ?? ""}
+                                  onChange={e => field.onChange(e.target.value)}
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="Consolation">Consolation</option>
+                                  <option value="3rd Place">3rd Place</option>
+                                  <option value="Championship">Championship</option>
+                                </select>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`times.${idx}.location`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Location</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder={`Enter location`} value={field.value ?? ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="flex gap-4 items-center mt-2">
-                      <FormField
-                        control={form.control}
-                        name={`times.${idx}.gameType`}
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-center gap-2">
-                            <FormLabel>Game Type</FormLabel>
-                            <FormControl>
-                              <select
-                                className="border rounded px-3 py-2"
-                                value={field.value ?? ""}
-                                onChange={e => field.onChange(e.target.value)}
-                              >
-                                <option value="">Select...</option>
-                                <option value="bracketPlay">Bracket Play</option>
-                                <option value="poolPlay">Pool Play</option>
-                              </select>
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
+                      <Button type="button" variant="destructive" size="sm" className="absolute top-2 right-2" onClick={() => removeTime(idx)}>
+                        Remove
+                      </Button>
                     </div>
-                    {/* Only show type if gameType is bracketPlay */}
-                    {form.watch(`times.${idx}.gameType`) === 'bracketPlay' && (
-                      <FormField
-                        control={form.control}
-                        name={`times.${idx}.type`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Type</FormLabel>
-                            <FormControl>
-                              <select
-                                className="border rounded px-3 py-2"
-                                value={field.value ?? ""}
-                                onChange={e => field.onChange(e.target.value)}
-                              >
-                                <option value="">Select...</option>
-                                <option value="Consolation">Consolation</option>
-                                <option value="3rd Place">3rd Place</option>
-                                <option value="Championship">Championship</option>
-                              </select>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
-                    <Button type="button" variant="destructive" size="sm" className="absolute top-2 right-2" onClick={() => removeTime(idx)}>
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Main Bracket Games (no label) */}
           {/* <div className="space-y-4">

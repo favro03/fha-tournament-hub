@@ -65,7 +65,7 @@ export const insertBracketSchema = z.object({
     youthLevel: z.string().optional(),
     date: z.string().optional(),
     image: z.string().optional(),
-    tournamentType: z.string().optional(),
+    bracketName: z.string().optional(),
     games: z.array(gameSchema).optional(),
     teams: z.array(teamSchema).optional(),
     times: z.array(timeSchema).optional(),
