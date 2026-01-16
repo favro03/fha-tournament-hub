@@ -264,7 +264,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                 ))}
               </select>
               {/* Team name inputs */}
-              {teamFields.length > 0 && (
+              {teamFields.length >= 2 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {teamFields.map((field, idx) => (
                     <FormField
