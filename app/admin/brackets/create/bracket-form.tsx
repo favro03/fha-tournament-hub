@@ -311,7 +311,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                 ))}
               </select>
               {/* Time slot inputs */}
-              {timeFields.length > 0 && (
+              {timeFields.length >= 2 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {timeFields.map((field, idx) => (
                       <div key={field.id} className="border p-4 rounded-md relative space-y-2">
