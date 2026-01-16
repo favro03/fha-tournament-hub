@@ -1,14 +1,15 @@
-import { neonConfig } from '@neondatabase/serverless';
-import { PrismaNeon } from '@prisma/adapter-neon';
-import { PrismaClient } from '@prisma/client';
-import ws from 'ws';
+import 'dotenv/config'
+import { neonConfig } from '@neondatabase/serverless'
+import { PrismaNeon } from '@prisma/adapter-neon'
+import { PrismaClient } from '@prisma/client'
+import ws from 'ws'
 
-// Sets up WebSocket connections, which enables Neon to use WebSocket communication.
-neonConfig.webSocketConstructor = ws;
-const connectionString = `${process.env.DATABASE_URL}`;
+neonConfig.webSocketConstructor = ws
 
-// Instantiates the Prisma adapter using the Neon connection string to handle the connection between Prisma and Neon.
-const adapter = new PrismaNeon({ connectionString });
+const connectionString = process.env.DATABASE_URL
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not set. Check your .env file and where you run the command from.')
+}
 
-// Creates a PrismaClient instance with the Neon adapter.
-export const prisma = new PrismaClient({ adapter });
+const adapter = new PrismaNeon({ connectionString })
+export const prisma = new PrismaClient({ adapter })

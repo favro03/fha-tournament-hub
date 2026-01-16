@@ -375,8 +375,8 @@ const BracketForm = ({type, bracket, bracketId}: {
                         )}
                       />
                     </div>
-                    {/* Only show type if gameType is poolPlay */}
-                    {form.watch(`times.${idx}.gameType`) === 'poolPlay' && (
+                    {/* Only show type if gameType is bracketPlay */}
+                    {form.watch(`times.${idx}.gameType`) === 'bracketPlay' && (
                       <FormField
                         control={form.control}
                         name={`times.${idx}.type`}
@@ -384,7 +384,16 @@ const BracketForm = ({type, bracket, bracketId}: {
                           <FormItem>
                             <FormLabel>Type</FormLabel>
                             <FormControl>
-                              <Input {...field} placeholder="3rd, consolation, championship" value={field.value ?? ""} />
+                              <select
+                                className="border rounded px-3 py-2"
+                                value={field.value ?? ""}
+                                onChange={e => field.onChange(e.target.value)}
+                              >
+                                <option value="">Select...</option>
+                                <option value="Consolation">Consolation</option>
+                                <option value="3rd Place">3rd Place</option>
+                                <option value="Championship">Championship</option>
+                              </select>
                             </FormControl>
                             <FormMessage />
                           </FormItem>

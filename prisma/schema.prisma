@@ -87,34 +87,41 @@ model Times {
   bracket   Bracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
   bracketId Int
   gameType  String
+  games     Game[]
 
   type String @default("")
 }
 
 model Bracket {
-  id         Int      @id @default(autoincrement())
-  name       String
-  youthLevel String
-  date       String
-  image      String
-  games      Game[] // New relation to games
-  teams      Team[]
-  times      Times[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  youthLevel  String
+  date        String
+  image       String
+  bracketName String
+  games       Game[] // New relation to games
+  teams       Team[]
+  times       Times[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Game {
-  id        Int     @id @default(autoincrement())
-  bracket   Bracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
-  bracketId Int
-  day       String
-  date      String
-  time      String
-  location  String
-  homeTeam  String
-  awayTeam  String
-  homeScore Int
-  awayScore Int
-  label     String? // For pool play (e.g., Consolation, 3rd Place, etc.)
+  id          Int     @id @default(autoincrement())
+  bracket     Bracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  bracketId   Int
+  times       Times?  @relation(fields: [timesId], references: [id], onDelete: SetNull)
+  timesId     Int?
+  day         String
+  date        String
+  time        String
+  location    String
+  homeTeam    String
+  awayTeam    String
+  homeScore   Int
+  awayScore   Int
+  awayPenalty Int     @default(0)
+  homePenalty Int     @default(0)
+  label       String? // For pool play (e.g., Consolation, 3rd Place, etc.)
+  gameType    String?
 }
