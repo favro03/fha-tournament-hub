@@ -20,6 +20,7 @@ import { generatePoolPlayGames, generateBracketGames } from '@/lib/generateGames
 import { UploadButton } from "@/lib/uploadthing";
 import { Card, CardContent } from "@/components/ui/card";
 import Image from "next/image";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 
 // Helper to parse date and get day of week
 function getDayOfWeek(dateString: string): string {
@@ -270,539 +271,558 @@ const BracketForm = ({type, bracket, bracketId}: {
   )}
 />
 
-          {/* Select number of teams - only show if bracketName is 'Pool Play + Championship Bracket' */}
-          {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
-            <div className="flex flex-col gap-4 mt-4">
-              <label htmlFor="numTeams" className="font-medium">Select number of teams in tournament</label>
-              <select
-                id="numTeams"
-                className="border rounded px-3 py-2 w-40"
-                value={teamFields.length || ''}
-                onChange={e => {
-                  const num = parseInt(e.target.value, 10);
-                  if (!isNaN(num)) {
-                    // Replace teams array with correct length
-                    replaceTeams(Array.from({ length: num }, (_, i) => ({ teamName: '' })));
-                  } else {
-                    replaceTeams([]);
-                  }
-                }}
-              >
-                <option value="">Select...</option>
-                {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-              {/* Team name inputs */}
-              {teamFields.length >= 2 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {teamFields.map((field, idx) => (
-                    <FormField
-                      key={field.id}
-                      control={form.control}
-                      name={`teams.${idx}.teamName`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Team {idx + 1} Name</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder={`Enter team ${idx + 1} name`} value={field.value ?? ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Select number of time slots - only show if bracketName is 'Pool Play + Championship Bracket' */}
-          {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
-            <div className="flex flex-col gap-4 mt-4">
-              <label htmlFor="numTimes" className="font-medium">Select number of time slots</label>
-              <select
-                id="numTimes"
-                className="border rounded px-3 py-2 w-40"
-                value={timeFields.length || ''}
-                onChange={e => {
-                  const num = parseInt(e.target.value, 10);
-                  if (!isNaN(num)) {
-                    // Replace times array with correct length
-                    replaceTimes(Array.from({ length: num }, () => ({ day: '', date: '', timeSlots: '', location: '' })));
-                  } else {
-                    replaceTimes([]);
-                  }
-                }}
-              >
-                <option value="">Select...</option>
-                {Array.from({ length: 99 }, (_, i) => i + 2).map(n => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-              {/* Time slot inputs */}
-              {timeFields.length >= 2 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {timeFields.map((field, idx) => (
-                      <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                        <div className="font-semibold mb-2">Game {idx + 1}</div>
-                        <FormField
-                          control={form.control}
-                          name={`times.${idx}.date`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Date</FormLabel>
-                              <FormControl>
-                                <Input
-                                  {...field}
-                                  placeholder={`Enter date`}
-                                  value={field.value ?? ""}
-                                  onChange={e => {
-                                    field.onChange(e);
-                                    const day = getDayOfWeek(e.target.value);
-                                    form.setValue(`times.${idx}.day`, day);
-                                  }}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`times.${idx}.day`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Day</FormLabel>
-                              <FormControl>
-                                <Input {...field} placeholder={`Enter day`} value={field.value ?? ""} readOnly />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                     
-                      <FormField
-                        control={form.control}
-                        name={`times.${idx}.timeSlots`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Time</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder={`Enter time`} value={field.value ?? ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`times.${idx}.location`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Location</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder={`Enter location`} value={field.value ?? ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="flex gap-4 items-center mt-2">
-                        <FormField
-                          control={form.control}
-                          name={`times.${idx}.gameType`}
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center gap-2">
-                              <FormLabel>Game Type</FormLabel>
-                              <FormControl>
-                                <select
-                                  className="border rounded px-3 py-2"
-                                  value={field.value ?? ""}
-                                  onChange={e => field.onChange(e.target.value)}
-                                >
-                                  <option value="">Select...</option>
-                                  <option value="bracketPlay">Bracket Play</option>
-                                  <option value="poolPlay">Pool Play</option>
-                                </select>
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
+          {/* Accordion for bracket sections */}
+          <Accordion type="multiple" className="mt-4" defaultValue={["teams","times","pool-play","bracket-play"]}>
+            {/* Select number of teams */}
+            {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
+              <AccordionItem value="teams">
+                <AccordionTrigger>Select number of teams in tournament</AccordionTrigger>
+                <AccordionContent>
+                  <div className="flex flex-col gap-4">
+                    <select
+                      id="numTeams"
+                      className="border rounded px-3 py-2 w-40"
+                      value={teamFields.length || ''}
+                      onChange={e => {
+                        const num = parseInt(e.target.value, 10);
+                        if (!isNaN(num)) {
+                          replaceTeams(Array.from({ length: num }, (_, i) => ({ teamName: '' })));
+                        } else {
+                          replaceTeams([]);
+                        }
+                      }}
+                    >
+                      <option value="">Select...</option>
+                      {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                    {/* Team name inputs */}
+                    {teamFields.length >= 2 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {teamFields.map((field, idx) => (
+                          <FormField
+                            key={field.id}
+                            control={form.control}
+                            name={`teams.${idx}.teamName`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Team {idx + 1} Name</FormLabel>
+                                <FormControl>
+                                  <Input {...field} placeholder={`Enter team ${idx + 1} name`} value={field.value ?? ""} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        ))}
                       </div>
-                      {/* Only show type if gameType is bracketPlay */}
-                      {form.watch(`times.${idx}.gameType`) === 'bracketPlay' && (
-                        <FormField
-                          control={form.control}
-                          name={`times.${idx}.type`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Type</FormLabel>
-                              <FormControl>
-                                <select
-                                  className="border rounded px-3 py-2"
-                                  value={field.value ?? ""}
-                                  onChange={e => field.onChange(e.target.value)}
-                                >
-                                  <option value="">Select...</option>
-                                  <option value="Consolation">Consolation</option>
-                                  <option value="3rd Place">3rd Place</option>
-                                  <option value="Championship">Championship</option>
-                                </select>
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      )}
-                      <Button type="button" variant="destructive" size="sm" className="absolute top-2 right-2" onClick={() => removeTime(idx)}>
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-
-          {/* Pool Play Section */}
-          {gameFields.filter(g => g.label === 'Pool Play').length > 0 && (
-            <div className="space-y-4 mt-8">
-              <h3 className="text-lg font-bold">Pool Play</h3>
-              {gameFields.filter(g => g.label === 'Pool Play').map((field, idx) => {
-                const gameIdx = gameFields.findIndex(f => f.id === field.id);
-                return (
-                  <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.day`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Day</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Day" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.date`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Date" value={field.value ?? ''} onChange={e => {
-                                field.onChange(e);
-                                const day = getDayOfWeek(e.target.value);
-                                form.setValue(`games.${gameIdx}.day`, day);
-                              }} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.time`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Time</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Time" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.location`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Location</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Location" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.homeTeam`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Home Team</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Home Team" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.awayTeam`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Away Team</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Away Team" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.homeScore`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Home Score</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                placeholder="Home Score"
-                                value={field.value ?? ''}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  field.onChange(val === '' ? '' : Number(val));
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.awayScore`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Away Score</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                placeholder="Away Score"
-                                value={field.value ?? ''}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  field.onChange(val === '' ? '' : Number(val));
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.homePenalty`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Home Penalty (min)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="any"
-                                {...field}
-                                placeholder="Home Penalty"
-                                value={field.value ?? ''}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  field.onChange(val === '' ? '' : parseFloat(val));
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.awayPenalty`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Away Penalty (min)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="any"
-                                {...field}
-                                placeholder="Away Penalty"
-                                value={field.value ?? ''}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  field.onChange(val === '' ? '' : parseFloat(val));
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
-          {/* Bracket Play Section */}
-          {gameFields.filter(g => g.label !== 'Pool Play').length > 0 && (
-            <div className="space-y-4 mt-8">
-              <h3 className="text-lg font-bold">Bracket Play</h3>
-              {gameFields.filter(g => g.label !== 'Pool Play').map((field, idx) => {
-                const gameIdx = gameFields.findIndex(f => f.id === field.id);
-                return (
-                  <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.day`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Day</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Day" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.date`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Date" value={field.value ?? ''} onChange={e => {
-                                field.onChange(e);
-                                const day = getDayOfWeek(e.target.value);
-                                form.setValue(`games.${gameIdx}.day`, day);
-                              }} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.time`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Time</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Time" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.location`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Location</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Location" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.homeTeam`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Home Team</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Home Team (e.g. Seed 1)" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.awayTeam`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Away Team</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Away Team (e.g. Seed 2)" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.homeScore`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Home Score</FormLabel>
-                            <FormControl>
-                              <Input type="number" {...field} placeholder="Home Score" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.awayScore`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Away Score</FormLabel>
-                            <FormControl>
-                              <Input type="number" {...field} placeholder="Away Score" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.homePenalty`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Home Penalty</FormLabel>
-                            <FormControl>
-                              <Input type="number" {...field} placeholder="Home Penalty" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`games.${gameIdx}.awayPenalty`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Away Penalty</FormLabel>
-                            <FormControl>
-                              <Input type="number" {...field} placeholder="Away Penalty" value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+            {/* Select number of time slots */}
+            {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
+              <AccordionItem value="times">
+                <AccordionTrigger>Select number of time slots</AccordionTrigger>
+                <AccordionContent>
+                  <div className="flex flex-col gap-4">
+                    <select
+                      id="numTimes"
+                      className="border rounded px-3 py-2 w-40"
+                      value={timeFields.length || ''}
+                      onChange={e => {
+                        const num = parseInt(e.target.value, 10);
+                        if (!isNaN(num)) {
+                          replaceTimes(Array.from({ length: num }, () => ({ day: '', date: '', timeSlots: '', location: '' })));
+                        } else {
+                          replaceTimes([]);
+                        }
+                      }}
+                    >
+                      <option value="">Select...</option>
+                      {Array.from({ length: 99 }, (_, i) => i + 2).map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                    {/* Time slot inputs */}
+                    {timeFields.length >= 2 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {timeFields.map((field, idx) => (
+                          <div key={field.id} className="border p-4 rounded-md relative space-y-2">
+                            <div className="font-semibold mb-2">Game {idx + 1}</div>
+                            {/* ...existing code for time slot fields... */}
+                            <FormField
+                              control={form.control}
+                              name={`times.${idx}.date`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Date</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      placeholder={`Enter date`}
+                                      value={field.value ?? ""}
+                                      onChange={e => {
+                                        field.onChange(e);
+                                        const day = getDayOfWeek(e.target.value);
+                                        form.setValue(`times.${idx}.day`, day);
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`times.${idx}.day`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Day</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder={`Enter day`} value={field.value ?? ""} readOnly />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`times.${idx}.timeSlots`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Time</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder={`Enter time`} value={field.value ?? ""} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`times.${idx}.location`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Location</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder={`Enter location`} value={field.value ?? ""} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <div className="flex gap-4 items-center mt-2">
+                              <FormField
+                                control={form.control}
+                                name={`times.${idx}.gameType`}
+                                render={({ field }) => (
+                                  <FormItem className="flex flex-row items-center gap-2">
+                                    <FormLabel>Game Type</FormLabel>
+                                    <FormControl>
+                                      <select
+                                        className="border rounded px-3 py-2"
+                                        value={field.value ?? ""}
+                                        onChange={e => field.onChange(e.target.value)}
+                                      >
+                                        <option value="">Select...</option>
+                                        <option value="bracketPlay">Bracket Play</option>
+                                        <option value="poolPlay">Pool Play</option>
+                                      </select>
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                            {/* Only show type if gameType is bracketPlay */}
+                            {form.watch(`times.${idx}.gameType`) === 'bracketPlay' && (
+                              <FormField
+                                control={form.control}
+                                name={`times.${idx}.type`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Type</FormLabel>
+                                    <FormControl>
+                                      <select
+                                        className="border rounded px-3 py-2"
+                                        value={field.value ?? ""}
+                                        onChange={e => field.onChange(e.target.value)}
+                                      >
+                                        <option value="">Select...</option>
+                                        <option value="Consolation">Consolation</option>
+                                        <option value="3rd Place">3rd Place</option>
+                                        <option value="Championship">Championship</option>
+                                      </select>
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+                            <Button type="button" variant="destructive" size="sm" className="absolute top-2 right-2" onClick={() => removeTime(idx)}>
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
+
+            {/* Pool Play Section */}
+            {gameFields.filter(g => g.label === 'Pool Play').length > 0 && (
+              <AccordionItem value="pool-play">
+                <AccordionTrigger>Pool Play</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4">
+                    {gameFields.filter(g => g.label === 'Pool Play').map((field, idx) => {
+                      const gameIdx = gameFields.findIndex(f => f.id === field.id);
+                      return (
+                        <div key={field.id} className="border p-4 rounded-md relative space-y-2">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                            {/* ...existing code for pool play fields... */}
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.day`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Day</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Day" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.date`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Date</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Date" value={field.value ?? ''} onChange={e => {
+                                      field.onChange(e);
+                                      const day = getDayOfWeek(e.target.value);
+                                      form.setValue(`games.${gameIdx}.day`, day);
+                                    }} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.time`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Time</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Time" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.location`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Location</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Location" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.homeTeam`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Home Team</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Home Team" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.awayTeam`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Away Team</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Away Team" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.homeScore`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Home Score</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      {...field}
+                                      placeholder="Home Score"
+                                      value={field.value ?? ''}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        field.onChange(val === '' ? '' : Number(val));
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.awayScore`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Away Score</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      {...field}
+                                      placeholder="Away Score"
+                                      value={field.value ?? ''}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        field.onChange(val === '' ? '' : Number(val));
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.homePenalty`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Home Penalty (min)</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="any"
+                                      {...field}
+                                      placeholder="Home Penalty"
+                                      value={field.value ?? ''}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        field.onChange(val === '' ? '' : parseFloat(val));
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.awayPenalty`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Away Penalty (min)</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="any"
+                                      {...field}
+                                      placeholder="Away Penalty"
+                                      value={field.value ?? ''}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        field.onChange(val === '' ? '' : parseFloat(val));
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
+            {/* Bracket Play Section */}
+            {gameFields.filter(g => g.label !== 'Pool Play').length > 0 && (
+              <AccordionItem value="bracket-play">
+                <AccordionTrigger>Bracket Play</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4">
+                    {gameFields.filter(g => g.label !== 'Pool Play').map((field, idx) => {
+                      const gameIdx = gameFields.findIndex(f => f.id === field.id);
+                      return (
+                        <div key={field.id} className="border p-4 rounded-md relative space-y-2">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                            {/* ...existing code for bracket play fields... */}
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.day`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Day</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Day" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.date`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Date</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Date" value={field.value ?? ''} onChange={e => {
+                                      field.onChange(e);
+                                      const day = getDayOfWeek(e.target.value);
+                                      form.setValue(`games.${gameIdx}.day`, day);
+                                    }} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.time`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Time</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Time" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.location`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Location</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Location" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.homeTeam`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Home Team</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Home Team (e.g. Seed 1)" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.awayTeam`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Away Team</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Away Team (e.g. Seed 2)" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.homeScore`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Home Score</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" {...field} placeholder="Home Score" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.awayScore`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Away Score</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" {...field} placeholder="Away Score" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.homePenalty`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Home Penalty</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" {...field} placeholder="Home Penalty" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`games.${gameIdx}.awayPenalty`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Away Penalty</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" {...field} placeholder="Away Penalty" value={field.value ?? ''} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+          </Accordion>
 
           {/* Pool Play Games (with label) */}
           {/* <div className="space-y-4 mt-8">
