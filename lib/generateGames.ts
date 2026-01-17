@@ -122,7 +122,7 @@ export function generateBracketGames(
       games.push({
         day: time.day,
         date: time.date,
-        time: time.timeSlots || time.time || '',
+        time: time.timeSlots || '',
         location: time.location,
         homeTeam: `seed${seed}`,
         awayTeam: `seed${seed + 1}`,
