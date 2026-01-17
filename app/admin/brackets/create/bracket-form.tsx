@@ -158,8 +158,8 @@ const BracketForm = ({type, bracket, bracketId}: {
       setShowBracketDialog(false);
       setGenerating(true);
       // Generate pool play games
-      const teams = form.getValues('teams');
-      const times = form.getValues('times');
+      const teams = form.getValues('teams') ?? [];
+      const times = form.getValues('times') ?? [];
       const poolGames = generatePoolPlayGames(teams, times, gamesPerTeam);
       // Generate bracket games (seed placeholders)
       const bracketGames = generateBracketGames(times, teams.length);
