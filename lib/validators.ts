@@ -56,6 +56,8 @@ export const gameSchema = z.object({
     awayTeam: z.string().optional(),
     homeScore: z.number().int().optional(),
     awayScore: z.number().int().optional(),
+    homePenalty: z.number().optional(),
+    awayPenalty: z.number().optional(),
     label: z.string().optional(), // For pool play (e.g., Consolation, 3rd Place, etc.)
 });
 

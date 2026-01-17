@@ -120,8 +120,8 @@ model Game {
   awayTeam    String
   homeScore   Int
   awayScore   Int
-  awayPenalty Int     @default(0)
-  homePenalty Int     @default(0)
+  awayPenalty Float   @default(0)
+  homePenalty Float   @default(0)
   label       String? // For pool play (e.g., Consolation, 3rd Place, etc.)
   gameType    String?
 }

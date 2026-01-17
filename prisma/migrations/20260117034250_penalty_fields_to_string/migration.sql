@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Game" ALTER COLUMN "awayPenalty" SET DEFAULT '',
+ALTER COLUMN "awayPenalty" SET DATA TYPE TEXT,
+ALTER COLUMN "homePenalty" SET DEFAULT '',
+ALTER COLUMN "homePenalty" SET DATA TYPE TEXT;
