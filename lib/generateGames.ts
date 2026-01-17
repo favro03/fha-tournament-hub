@@ -17,7 +17,7 @@ function parseTimeToMinutes(time: string): number {
 
 // Helper to check if a team can play at a given time (2-hour gap)
 function canPlayAtTime(team: string, scheduledGames: Game[], candidate: Times): boolean {
-  const candidateMinutes = parseTimeToMinutes(candidate.timeSlots || candidate.time || '');
+  const candidateMinutes = parseTimeToMinutes(candidate.timeSlots || '');
   for (const game of scheduledGames) {
     if (game.homeTeam === team || game.awayTeam === team) {
       if (game.date === candidate.date) {
@@ -78,7 +78,7 @@ export function generatePoolPlayGames(
         scheduledGames.push({
           day: time.day,
           date: time.date,
-          time: time.timeSlots || time.time || '',
+          time: time.timeSlots || '',
           location: time.location,
           homeTeam: teamA,
           awayTeam: teamB,
