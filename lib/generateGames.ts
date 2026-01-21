@@ -101,7 +101,7 @@ export function generatePoolPlayGames(
   }
   const timesByDate: Record<string, Times[]> = {};
   for (const t of poolTimes) {
-    const norm = normalizeDate(t.date);
+    const norm = normalizeDate(t.date ?? '');
     if (!timesByDate[norm]) timesByDate[norm] = [];
     timesByDate[norm].push(t);
   }
