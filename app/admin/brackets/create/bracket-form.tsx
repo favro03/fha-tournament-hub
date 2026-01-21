@@ -92,7 +92,7 @@ const BracketForm = ({type, bracket, bracketId}: {
       : bracketDefaultValues;
 
       // Standings calculation helper
-      function calculateStandings(teams, games) {
+      function calculateStandings(teams: { teamName: string }[], games: { homeTeam: string; awayTeam: string; homeScore?: number; awayScore?: number; homePenalty?: number; awayPenalty?: number; label?: string }[]) {
         const standings = teams.map((team, idx) => ({
           teamName: team.teamName,
           points: 0,
