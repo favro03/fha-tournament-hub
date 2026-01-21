@@ -171,8 +171,8 @@ const BracketForm = ({type, bracket, bracketId}: {
       }
 
       function handleApplySeeds(): void {
-        const teams = form.getValues('teams');
-        const games = form.getValues('games');
+        const teams = form.getValues('teams') ?? [];
+        const games = form.getValues('games') ?? [];
         const standings = calculateStandings(teams, games);
         // Always use the first 6 teams in standings order for seeds 1-6
         const bracketGames = games.filter(g => g.label !== 'Pool Play');
