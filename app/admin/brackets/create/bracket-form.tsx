@@ -2,7 +2,7 @@
 
 
 'use client'
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 
 import { bracketDefaultValues } from "@/lib/constants";
@@ -172,12 +172,16 @@ const BracketForm = ({type, bracket, bracketId}: {
 
       function handleApplySeeds(): void {
         const teams = form.getValues('teams') ?? [];
-        let games = form.getValues('games') ?? [];
-        // Ensure homeTeam and awayTeam are always string, not undefined
-        games = games.map(g => ({
-          ...g,
+        const gamesRaw = form.getValues('games') ?? [];
+        // Ensure homeTeam and awayTeam are always string, not undefined, and cast to correct type
+        const games: { homeTeam: string; awayTeam: string; homeScore?: number; awayScore?: number; homePenalty?: number; awayPenalty?: number; label?: string }[] = gamesRaw.map(g => ({
           homeTeam: g.homeTeam ?? '',
-          awayTeam: g.awayTeam ?? ''
+          awayTeam: g.awayTeam ?? '',
+          homeScore: g.homeScore,
+          awayScore: g.awayScore,
+          homePenalty: g.homePenalty,
+          awayPenalty: g.awayPenalty,
+          label: g.label
         }));
         const standings = calculateStandings(teams, games);
         // Always use the first 6 teams in standings order for seeds 1-6
@@ -267,7 +271,7 @@ const BracketForm = ({type, bracket, bracketId}: {
       let poolGames = [];
       try {
         poolGames = generatePoolPlayGames(teams, times, gamesPerTeam);
-      } catch (err: any) {
+      } catch (err: unknown) {
         setGenerating(false);
         toast.error(`Unable to generate pool play games: ${err.message || err}`);
         return;
@@ -396,7 +400,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                       onChange={e => {
                         const num = parseInt(e.target.value, 10);
                         if (!isNaN(num)) {
-                          replaceTeams(Array.from({ length: num }, (_, i) => ({ teamName: '' })));
+                          replaceTeams(Array.from({ length: num }, () => ({ teamName: '' })));
                         } else {
                           replaceTeams([]);
                         }
@@ -591,7 +595,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                 <AccordionTrigger>Pool Play</AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-4">
-                    {gameFields.filter(g => g.label === 'Pool Play').map((field, idx) => {
+                    {gameFields.filter(g => g.label === 'Pool Play').map((field) => {
                       const gameIdx = gameFields.findIndex(f => f.id === field.id);
                       return (
                         <div key={field.id} className="border p-4 rounded-md relative space-y-2">
@@ -835,7 +839,7 @@ const BracketForm = ({type, bracket, bracketId}: {
                 <AccordionTrigger>Bracket Play</AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-4">
-                    {gameFields.filter(g => g.label !== 'Pool Play').map((field, idx) => {
+                    {gameFields.filter(g => g.label !== 'Pool Play').map((field) => {
                       const gameIdx = gameFields.findIndex(f => f.id === field.id);
                       return (
                         <div key={field.id} className="border p-4 rounded-md relative space-y-2">
@@ -1133,7 +1137,7 @@ const BracketForm = ({type, bracket, bracketId}: {
               </Button>
               {showBracketDialog && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-                  <div className="bg-white p-6 rounded shadow-lg min-w-[300px]">
+                  <div className="bg-white p-6 rounded shadow-lg min-w-75">
                     <h2 className="text-lg font-bold mb-2">Number of Games Per Team</h2>
                     <input
                       type="number"
