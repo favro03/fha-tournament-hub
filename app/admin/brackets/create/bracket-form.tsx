@@ -91,6 +91,96 @@ const BracketForm = ({type, bracket, bracketId}: {
         }
       : bracketDefaultValues;
 
+      // Standings calculation helper
+      function calculateStandings(teams, games) {
+        const standings = teams.map((team, idx) => ({
+          teamName: team.teamName,
+          points: 0,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          penaltyMinutes: 0,
+          idx,
+        }));
+        const poolGames = games.filter(g => g.label === 'Pool Play');
+        poolGames.forEach(game => {
+          const homeIdx = standings.findIndex(t => t.teamName === game.homeTeam);
+          const awayIdx = standings.findIndex(t => t.teamName === game.awayTeam);
+          if (homeIdx === -1 || awayIdx === -1) return;
+          const homeScore = Number(game.homeScore ?? 0);
+          const awayScore = Number(game.awayScore ?? 0);
+          const homePenalty = Number(game.homePenalty ?? 0);
+          const awayPenalty = Number(game.awayPenalty ?? 0);
+          standings[homeIdx].goalsFor += homeScore;
+          standings[homeIdx].goalsAgainst += awayScore;
+          standings[homeIdx].penaltyMinutes += homePenalty;
+          standings[awayIdx].goalsFor += awayScore;
+          standings[awayIdx].goalsAgainst += homeScore;
+          standings[awayIdx].penaltyMinutes += awayPenalty;
+          if (homeScore > awayScore) {
+            standings[homeIdx].wins++;
+            standings[awayIdx].losses++;
+            if (awayScore === 0) {
+              standings[homeIdx].points += 3;
+            } else {
+              standings[homeIdx].points += 2;
+            }
+          } else if (awayScore > homeScore) {
+            standings[awayIdx].wins++;
+            standings[homeIdx].losses++;
+            if (homeScore === 0) {
+              standings[awayIdx].points += 3;
+            } else {
+              standings[awayIdx].points += 2;
+            }
+          } else if (homeScore === awayScore && homeScore !== 0) {
+            standings[homeIdx].ties++;
+            standings[awayIdx].ties++;
+            standings[homeIdx].points += 1;
+            standings[awayIdx].points += 1;
+          }
+        });
+        function tiebreaker(a, b) {
+          if (a.points !== b.points) return b.points - a.points;
+          const h2hGame = poolGames.find(g =>
+            (g.homeTeam === a.teamName && g.awayTeam === b.teamName) ||
+            (g.homeTeam === b.teamName && g.awayTeam === a.teamName)
+          );
+          if (h2hGame) {
+            if (h2hGame.homeTeam === a.teamName && h2hGame.homeScore > h2hGame.awayScore) return -1;
+            if (h2hGame.awayTeam === a.teamName && h2hGame.awayScore > h2hGame.homeScore) return -1;
+            if (h2hGame.homeTeam === b.teamName && h2hGame.homeScore > h2hGame.awayScore) return 1;
+            if (h2hGame.awayTeam === b.teamName && h2hGame.awayScore > h2hGame.homeScore) return 1;
+          }
+          if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
+          if (a.goalsFor !== b.goalsFor) return b.goalsFor - a.goalsFor;
+          if (a.penaltyMinutes !== b.penaltyMinutes) return a.penaltyMinutes - b.penaltyMinutes;
+          return 0;
+        }
+        return [...standings].sort(tiebreaker).map((s, i) => ({ ...s, seed: i + 1 }));
+      }
+
+      function handleApplySeeds() {
+        const teams = form.getValues('teams');
+        const games = form.getValues('games');
+        const standings = calculateStandings(teams, games);
+        // Always use the first 6 teams in standings order for seeds 1-6
+        const bracketGames = games.filter(g => g.label !== 'Pool Play');
+        bracketGames.forEach((game) => {
+          if (game.label === 'Championship') {
+            form.setValue(`games.${games.findIndex(g => g === game)}.homeTeam`, standings[0] ? `Seed 1: ${standings[0].teamName}` : 'Seed 1');
+            form.setValue(`games.${games.findIndex(g => g === game)}.awayTeam`, standings[1] ? `Seed 2: ${standings[1].teamName}` : 'Seed 2');
+          } else if (game.label === '3rd Place') {
+            form.setValue(`games.${games.findIndex(g => g === game)}.homeTeam`, standings[2] ? `Seed 3: ${standings[2].teamName}` : 'Seed 3');
+            form.setValue(`games.${games.findIndex(g => g === game)}.awayTeam`, standings[3] ? `Seed 4: ${standings[3].teamName}` : 'Seed 4');
+          } else if (game.label === 'Consolation') {
+            form.setValue(`games.${games.findIndex(g => g === game)}.homeTeam`, standings[4] ? `Seed 5: ${standings[4].teamName}` : 'Seed 5');
+            form.setValue(`games.${games.findIndex(g => g === game)}.awayTeam`, standings[5] ? `Seed 6: ${standings[5].teamName}` : 'Seed 6');
+          }
+        });
+      }
     const form = useForm<z.infer<typeof insertBracketSchema>>({
       resolver:
         type === 'Update'
@@ -158,10 +248,16 @@ const BracketForm = ({type, bracket, bracketId}: {
     const handleConfirmGamesPerTeam = () => {
       setShowBracketDialog(false);
       setGenerating(true);
-      // Generate pool play games
       const teams = form.getValues('teams') ?? [];
       const times = form.getValues('times') ?? [];
-      const poolGames = generatePoolPlayGames(teams, times, gamesPerTeam);
+      let poolGames = [];
+      try {
+        poolGames = generatePoolPlayGames(teams, times, gamesPerTeam);
+      } catch (err: any) {
+        setGenerating(false);
+        toast.error(`Unable to generate pool play games: ${err.message || err}`);
+        return;
+      }
       // Generate bracket games (seed placeholders)
       const bracketGames = generateBracketGames(times, teams.length);
       // Set games in form (pool play first, then bracket games)
@@ -667,6 +763,57 @@ const BracketForm = ({type, bracket, bracketId}: {
                 </AccordionContent>
               </AccordionItem>
             )}
+
+              {/* Standings Section */}
+              {gameFields.filter(g => g.label === 'Pool Play').length > 0 && (
+                <AccordionItem value="standings">
+                  <AccordionTrigger>Standings</AccordionTrigger>
+                  <AccordionContent>
+                    {(() => {
+                      const teams = form.getValues('teams');
+                      const games = form.getValues('games');
+                      const standings = calculateStandings(teams, games);
+                      return (
+                        <div className="space-y-4">
+                          <table className="min-w-full border text-sm">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border px-2 py-1">Seed</th>
+                                <th className="border px-2 py-1">Team</th>
+                                <th className="border px-2 py-1">Points</th>
+                                <th className="border px-2 py-1">W</th>
+                                <th className="border px-2 py-1">L</th>
+                                <th className="border px-2 py-1">T</th>
+                                <th className="border px-2 py-1">GF</th>
+                                <th className="border px-2 py-1">GA</th>
+                                <th className="border px-2 py-1">PIM</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {standings.map(team => (
+                                <tr key={team.teamName}>
+                                  <td className="border px-2 py-1">{team.seed}</td>
+                                  <td className="border px-2 py-1">{team.teamName}</td>
+                                  <td className="border px-2 py-1">{team.points}</td>
+                                  <td className="border px-2 py-1">{team.wins}</td>
+                                  <td className="border px-2 py-1">{team.losses}</td>
+                                  <td className="border px-2 py-1">{team.ties}</td>
+                                  <td className="border px-2 py-1">{team.goalsFor}</td>
+                                  <td className="border px-2 py-1">{team.goalsAgainst}</td>
+                                  <td className="border px-2 py-1">{team.penaltyMinutes}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <Button type="button" className="mt-4" onClick={handleApplySeeds}>
+                            Apply Seeds to Bracket
+                          </Button>
+                        </div>
+                      );
+                    })()}
+                  </AccordionContent>
+                </AccordionItem>
+              )}
 
             {/* Bracket Play Section */}
             {gameFields.filter(g => g.label !== 'Pool Play').length > 0 && (
