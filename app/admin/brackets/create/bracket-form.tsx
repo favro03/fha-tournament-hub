@@ -795,7 +795,16 @@ const BracketForm = ({type, bracket, bracketId}: {
                   <AccordionContent>
                     {(() => {
                       const teams = form.getValues('teams') ?? [];
-                      const games = form.getValues('games') ?? [];
+                      const gamesRaw = form.getValues('games') ?? [];
+                      const games = gamesRaw.map(g => ({
+                        homeTeam: g.homeTeam ?? '',
+                        awayTeam: g.awayTeam ?? '',
+                        homeScore: g.homeScore,
+                        awayScore: g.awayScore,
+                        homePenalty: g.homePenalty,
+                        awayPenalty: g.awayPenalty,
+                        label: g.label
+                      }));
                       const standings = calculateStandings(teams, games);
                       return (
                         <div className="space-y-4">
