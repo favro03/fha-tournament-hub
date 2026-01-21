@@ -273,7 +273,13 @@ const BracketForm = ({type, bracket, bracketId}: {
         poolGames = generatePoolPlayGames(teams, times, gamesPerTeam);
       } catch (err: unknown) {
         setGenerating(false);
-        toast.error(`Unable to generate pool play games: ${err.message || err}`);
+        let errorMsg = 'Unknown error';
+        if (err instanceof Error) {
+          errorMsg = err.message;
+        } else if (typeof err === 'string') {
+          errorMsg = err;
+        }
+        toast.error(`Unable to generate pool play games: ${errorMsg}`);
         return;
       }
       // Generate bracket games (seed placeholders)
