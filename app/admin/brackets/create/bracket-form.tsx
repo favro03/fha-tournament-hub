@@ -92,7 +92,10 @@ const BracketForm = ({type, bracket, bracketId}: {
       : bracketDefaultValues;
 
       // Standings calculation helper
-      function calculateStandings(teams: { teamName: string }[], games: { homeTeam: string; awayTeam: string; homeScore?: number; awayScore?: number; homePenalty?: number; awayPenalty?: number; label?: string }[]) {
+      function calculateStandings(
+        teams: { teamName: string }[],
+        games: { homeTeam: string; awayTeam: string; homeScore?: number; awayScore?: number; homePenalty?: number; awayPenalty?: number; label?: string }[]
+      ) {
         const standings = teams.map((team, idx) => ({
           teamName: team.teamName,
           points: 0,
@@ -142,7 +145,10 @@ const BracketForm = ({type, bracket, bracketId}: {
             standings[awayIdx].points += 1;
           }
         });
-        function tiebreaker(a, b) {
+        function tiebreaker(
+          a: { teamName: string; points: number; goalsFor: number; goalsAgainst: number; penaltyMinutes: number; },
+          b: { teamName: string; points: number; goalsFor: number; goalsAgainst: number; penaltyMinutes: number; }
+        ) {
           if (a.points !== b.points) return b.points - a.points;
           const h2hGame = poolGames.find(g =>
             (g.homeTeam === a.teamName && g.awayTeam === b.teamName) ||
@@ -162,7 +168,7 @@ const BracketForm = ({type, bracket, bracketId}: {
         return [...standings].sort(tiebreaker).map((s, i) => ({ ...s, seed: i + 1 }));
       }
 
-      function handleApplySeeds() {
+      function handleApplySeeds(): void {
         const teams = form.getValues('teams');
         const games = form.getValues('games');
         const standings = calculateStandings(teams, games);
