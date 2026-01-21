@@ -155,10 +155,12 @@ const BracketForm = ({type, bracket, bracketId}: {
             (g.homeTeam === b.teamName && g.awayTeam === a.teamName)
           );
           if (h2hGame) {
-            if (h2hGame.homeTeam === a.teamName && h2hGame.homeScore > h2hGame.awayScore) return -1;
-            if (h2hGame.awayTeam === a.teamName && h2hGame.awayScore > h2hGame.homeScore) return -1;
-            if (h2hGame.homeTeam === b.teamName && h2hGame.homeScore > h2hGame.awayScore) return 1;
-            if (h2hGame.awayTeam === b.teamName && h2hGame.awayScore > h2hGame.homeScore) return 1;
+            const hHome = h2hGame.homeScore ?? 0;
+            const hAway = h2hGame.awayScore ?? 0;
+            if (h2hGame.homeTeam === a.teamName && hHome > hAway) return -1;
+            if (h2hGame.awayTeam === a.teamName && hAway > hHome) return -1;
+            if (h2hGame.homeTeam === b.teamName && hHome > hAway) return 1;
+            if (h2hGame.awayTeam === b.teamName && hAway > hHome) return 1;
           }
           if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
           if (a.goalsFor !== b.goalsFor) return b.goalsFor - a.goalsFor;
