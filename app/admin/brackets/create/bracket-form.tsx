@@ -794,8 +794,8 @@ const BracketForm = ({type, bracket, bracketId}: {
                   <AccordionTrigger>Standings</AccordionTrigger>
                   <AccordionContent>
                     {(() => {
-                      const teams = form.getValues('teams');
-                      const games = form.getValues('games');
+                      const teams = form.getValues('teams') ?? [];
+                      const games = form.getValues('games') ?? [];
                       const standings = calculateStandings(teams, games);
                       return (
                         <div className="space-y-4">
