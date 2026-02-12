@@ -1,33 +1,38 @@
+
+
+// TypeScript declaration for window.bracketsViewer
+declare global {
+    interface Window {
+        bracketsViewer?: {
+            render: (options: any) => void;
+        };
+    }
+}
+
 import { BracketCard } from "@/components/bracket-card";
 import { getBrackets } from "@/lib/actions/brackets.actions";
+import BracketViewer from "@/components/BracketViewer";
 
 const Brackets = async () => {
     const brackets = await getBrackets();
 
-    // Ensure each bracket has games array and label is never null
+    // Map brackets directly, no games/times logic needed
     const safeBrackets = Array.isArray(brackets)
-        ? brackets.map(bracket => ({
-            ...bracket,
-            games: Array.isArray(bracket.games)
-                ? bracket.games.map(g => ({
-                    ...g,
-                    label: g.label === null ? undefined : g.label
-                }))
-                : [],
-            times: Array.isArray(bracket.times) ? bracket.times : [],
-        }))
+        ? brackets.map(bracket => ({ ...bracket }))
         : [];
 
-    return ( 
+    return (
         <div>
-            {safeBrackets.map((bracket) => (
-                <BracketCard 
-                    key={bracket.id} 
-                    bracket={bracket}
-                />
+            {safeBrackets.map((bracket: any) => (
+                <div key={bracket.id}>
+                    <BracketCard bracket={bracket} />
+                    <BracketViewer bracketId={bracket.id} />
+                </div>
             ))}
         </div>
     );
-}
- 
+};
+
 export default Brackets;
+
+

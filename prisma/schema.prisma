@@ -93,35 +93,216 @@ model Times {
 }
 
 model Bracket {
-  id          Int      @id @default(autoincrement())
-  name        String
-  youthLevel  String
-  date        String
-  image       String
-  bracketName String
-  games       Game[] // New relation to games
-  teams       Team[]
-  times       Times[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  name           String
+  youthLevel     String
+  date           String
+  image          String
+  bracketName    String
+  // --- tournament engine fields ---
+  format         String   @default("ROUND_ROBIN") // ROUND_ROBIN, SINGLE_ELIMINATION...
+  engineConfig   Json?
+  standingsRules Json?
+  games          Game[] // New relation to games
+  teams          Team[]
+  times          Times[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Game {
-  id          Int     @id @default(autoincrement())
-  bracket     Bracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
-  bracketId   Int
-  times       Times?  @relation(fields: [timesId], references: [id], onDelete: SetNull)
-  timesId     Int?
-  day         String
-  date        String
-  time        String
-  location    String
-  homeTeam    String
-  awayTeam    String
-  homeScore   Int
-  awayScore   Int
+  id           Int    @id @default(autoincrement())
+  bracketId    Int
+  engineGameId String
+
+  bracket Bracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  timesId Int?
+  times   Times?  @relation(fields: [timesId], references: [id], onDelete: SetNull)
+
+  // --- existing fields (give defaults so engine can create unscheduled games) ---
+  day         String  @default("")
+  date        String  @default("")
+  time        String  @default("")
+  location    String  @default("")
+  homeTeam    String  @default("")
+  awayTeam    String  @default("")
+  homeScore   Int     @default(0)
+  awayScore   Int     @default(0)
   awayPenalty Float   @default(0)
   homePenalty Float   @default(0)
-  label       String? // For pool play (e.g., Consolation, 3rd Place, etc.)
+  label       String?
   gameType    String?
+
+  // --- tournament engine fields ---
+  stageType String @default("POOL_PLAY")
+  stageId   String @default("")
+  round     Int?
+  status    String @default("UNSCHEDULED")
+
+  homeRef Json?
+  awayRef Json?
+  result  Json?
+
+  @@unique([bracketId, engineGameId])
+}
+
+// --- Brackets-Manager/Prisma-DB Required Enums and Models ---
+
+enum StageType {
+  ROUND_ROBIN
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+}
+
+enum GrandFinalType {
+  NONE
+  SIMPLE
+  DOUBLE
+}
+
+enum RoundRobinMode {
+  SIMPLE
+  DOUBLE
+}
+
+enum SeedOrdering {
+  NATURAL
+  REVERSE
+  HALF_SHIFT
+  REVERSE_HALF_SHIFT
+  PAIR_FLIP
+  INNER_OUTER
+  GROUPS_EFFORT_BALANCED
+  GROUPS_SEED_OPTIMIZED
+  GROUPS_BRACKET_OPTIMIZED
+}
+
+enum MatchResult {
+  WIN
+  DRAW
+  LOSS
+}
+
+enum MatchStatus {
+  LOCKED
+  WAITING
+  READY
+  RUNNING
+  COMPLETED
+  ARCHIVED
+}
+
+model ParticipantMatchResult {
+  id               Int          @id @default(autoincrement())
+  participantId    Int?
+  participant      Participant? @relation(fields: [participantId], references: [id])
+  position         Int?
+  forfeit          Boolean?
+  score            Int?
+  result           MatchResult?
+  opponent1MatchId Int?         @unique
+  opponent1Match   Match?       @relation("opponent1", fields: [opponent1MatchId], references: [id])
+  opponent2MatchId Int?         @unique
+  opponent2Match   Match?       @relation("opponent2", fields: [opponent2MatchId], references: [id])
+}
+
+model ParticipantMatchGameResult {
+  id                   Int          @id @default(autoincrement())
+  participantId        Int?
+  participant          Participant? @relation(fields: [participantId], references: [id])
+  position             Int?
+  forfeit              Boolean?
+  score                Int?
+  result               MatchResult?
+  opponent1MatchGameId Int?         @unique
+  opponent1MatchGame   MatchGame?   @relation("opponent1", fields: [opponent1MatchGameId], references: [id])
+  opponent2MatchGameId Int?         @unique
+  opponent2MatchGame   MatchGame?   @relation("opponent2", fields: [opponent2MatchGameId], references: [id])
+}
+
+model Participant {
+  id               Int                          @id @default(autoincrement())
+  tournamentId     Int
+  name             String
+  extra            Json?
+  matchResults     ParticipantMatchResult[]
+  matchGameResults ParticipantMatchGameResult[]
+}
+
+model Stage {
+  id           Int            @id @default(autoincrement())
+  tournamentId Int
+  name         String
+  type         StageType
+  settings     StageSettings?
+  number       Int
+  groups       Group[]
+  rounds       Round[]
+  matches      Match[]
+  matchGames   MatchGame[]
+}
+
+model Group {
+  id      Int     @id @default(autoincrement())
+  stageId Int
+  stage   Stage   @relation(fields: [stageId], references: [id])
+  number  Int
+  rounds  Round[]
+  matches Match[]
+}
+
+model Round {
+  id      Int     @id @default(autoincrement())
+  stageId Int
+  stage   Stage   @relation(fields: [stageId], references: [id])
+  groupId Int
+  group   Group   @relation(fields: [groupId], references: [id])
+  number  Int
+  matches Match[]
+}
+
+model Match {
+  id              Int                     @id @default(autoincrement())
+  status          MatchStatus
+  opponent1Result ParticipantMatchResult? @relation("opponent1")
+  opponent2Result ParticipantMatchResult? @relation("opponent2")
+  stageId         Int
+  stage           Stage                   @relation(fields: [stageId], references: [id])
+  groupId         Int
+  group           Group                   @relation(fields: [groupId], references: [id])
+  roundId         Int
+  round           Round                   @relation(fields: [roundId], references: [id])
+  number          Int
+  childCount      Int
+  games           MatchGame[]
+  extra           Json?
+}
+
+model MatchGame {
+  id              Int                         @id @default(autoincrement())
+  status          MatchStatus
+  extra           Json?
+  opponent1Result ParticipantMatchGameResult? @relation("opponent1")
+  opponent2Result ParticipantMatchGameResult? @relation("opponent2")
+  stageId         Int
+  stage           Stage                       @relation(fields: [stageId], references: [id])
+  matchId         Int
+  match           Match                       @relation(fields: [matchId], references: [id])
+  number          Int
+}
+
+model StageSettings {
+  id                String          @id @default(uuid()) @db.Uuid
+  stageId           Int             @unique
+  stage             Stage           @relation(fields: [stageId], references: [id])
+  size              Int?
+  seedOrdering      SeedOrdering[]
+  balanceByes       Boolean?
+  matchesChildCount Int?
+  groupCount        Int?
+  roundRobinMode    RoundRobinMode?
+  manualOrdering    Json?
+  consolationFinal  Boolean?
+  skipFirstRound    Boolean?
+  grandFinal        GrandFinalType?
 }
