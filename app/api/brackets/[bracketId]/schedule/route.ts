@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getMinRestMinutes,
-  scheduleGamesGreedy,
+  scheduleGamesSmart,
 } from "@/lib/tournament-engine/scheduling/scheduleGames";
+
 import type { ParticipantRef } from "@/lib/tournament-engine/types";
 
 type Body = {
@@ -42,6 +43,114 @@ function isResolvedForScheduling(
 function refType(ref: ParticipantRef | null) {
   return ref?.type ?? "NULL";
 }
+type UnscheduledReason =
+  | "UNRESOLVED_PARTICIPANT"
+  | "NO_FREE_SLOT"
+  | "TEAM_CONFLICT"
+  | "REST_RULE_CONFLICT"
+  | "NO_VALID_SLOT";
+
+function computeUnscheduledReasons(args: {
+  unscheduledIds: string[];
+  games: Array<{
+    engineGameId: string;
+    homeRef: ParticipantRef | null;
+    awayRef: ParticipantRef | null;
+  }>;
+  slots: Array<{ id: string; start: string }>;
+  assignments: Array<{ engineGameId: string; slotId: string }>;
+  minRestMinutes: number;
+}): Array<{ engineGameId: string; reason: UnscheduledReason }> {
+  const { unscheduledIds, games, slots, assignments, minRestMinutes } = args;
+
+  const gameById = new Map(games.map((g) => [g.engineGameId, g] as const));
+  const slotById = new Map(slots.map((s) => [s.id, s] as const));
+  const usedSlotIds = new Set(assignments.map((a) => a.slotId));
+
+  const getMs = (iso: string) => {
+    const t = new Date(iso).getTime();
+    return Number.isFinite(t) ? t : NaN;
+  };
+
+  const restMs = minRestMinutes * 60 * 1000;
+
+  // teamId -> scheduled start times (ms)
+  const startsByTeam = new Map<string, number[]>();
+
+  for (const a of assignments) {
+    const g = gameById.get(a.engineGameId);
+    const s = slotById.get(a.slotId);
+    if (!g || !s) continue;
+
+    const startMs = getMs(s.start);
+    if (!Number.isFinite(startMs)) continue;
+
+    const homeId = isTeamRef(g.homeRef) ? g.homeRef.teamId : null;
+    const awayId = isTeamRef(g.awayRef) ? g.awayRef.teamId : null;
+
+    if (homeId) startsByTeam.set(homeId, [...(startsByTeam.get(homeId) ?? []), startMs]);
+    if (awayId) startsByTeam.set(awayId, [...(startsByTeam.get(awayId) ?? []), startMs]);
+  }
+
+  const canTeamPlayAt = (teamId: string, slotStartMs: number) => {
+    const starts = startsByTeam.get(teamId) ?? [];
+    for (const prev of starts) {
+      if (Math.abs(slotStartMs - prev) < restMs) return false;
+    }
+    return true;
+  };
+
+  const anyFreeSlot = slots.some((s) => !usedSlotIds.has(s.id));
+
+  return unscheduledIds.map((engineGameId) => {
+    const g = gameById.get(engineGameId);
+
+    if (!g || !isTeamRef(g.homeRef) || !isTeamRef(g.awayRef)) {
+      return { engineGameId, reason: "UNRESOLVED_PARTICIPANT" };
+    }
+
+    const homeId = g.homeRef.teamId;
+    const awayId = g.awayRef.teamId;
+
+    if (!anyFreeSlot) {
+      return { engineGameId, reason: "NO_FREE_SLOT" };
+    }
+
+    // Evaluate all FREE slots
+    let hasAnyRestFeasible = false;
+    let hasExactTimeConflict = false;
+
+    for (const s of slots) {
+      if (usedSlotIds.has(s.id)) continue;
+
+      const startMs = getMs(s.start);
+      if (!Number.isFinite(startMs)) continue;
+
+      const homeOk = canTeamPlayAt(homeId, startMs);
+      const awayOk = canTeamPlayAt(awayId, startMs);
+
+      if (homeOk && awayOk) {
+        hasAnyRestFeasible = true;
+        break;
+      }
+
+      // Exact-time conflict means: the team is already scheduled at that start time (other rink)
+      const homeStarts = startsByTeam.get(homeId) ?? [];
+      const awayStarts = startsByTeam.get(awayId) ?? [];
+      if (homeStarts.includes(startMs) || awayStarts.includes(startMs)) {
+        hasExactTimeConflict = true;
+      }
+    }
+
+    // If we found a feasible free slot but the game is still unscheduled, something else is off.
+    if (hasAnyRestFeasible) return { engineGameId, reason: "NO_VALID_SLOT" };
+
+    if (hasExactTimeConflict) return { engineGameId, reason: "TEAM_CONFLICT" };
+
+    return { engineGameId, reason: "REST_RULE_CONFLICT" };
+  });
+}
+
 
 export async function POST(
   req: Request,
@@ -220,18 +329,27 @@ export async function POST(
         awayRef: (g.awayRef ?? null) as any as ParticipantRef,
       }));
 
-    const { assignments, unscheduled } = scheduleGamesGreedy({
-      games: schedulable,
-      slots: slotInputs,
-      minRestMinutes,
-    });
+    const { assignments, unscheduled, meta } = scheduleGamesSmart({
+  games: schedulable,
+  slots: slotInputs,
+  minRestMinutes,
+});
 
-    const unusedSlotCount = slotInputs.length - assignments.length;
 
-const unscheduledDetailed = unscheduled.map((engineGameId) => ({
-  engineGameId,
-  reason: unusedSlotCount > 0 ? "REST_RULE_CONFLICT" : "NO_SLOT_AVAILABLE",
-}));
+const unusedSlotCount = slotInputs.length - assignments.length;
+
+const unscheduledDetailed = computeUnscheduledReasons({
+  unscheduledIds: unscheduled,
+  games: schedulable.map((g) => ({
+    engineGameId: g.engineGameId,
+    homeRef: g.homeRef ?? null,
+    awayRef: g.awayRef ?? null,
+  })),
+  slots: slotInputs.map((s) => ({ id: s.id, start: s.start })),
+  assignments,
+  minRestMinutes,
+});
+
 
 
     // Upgrade 5: Create Times ONLY for scheduled assignments + write to Games (single transaction)
@@ -305,7 +423,7 @@ const unscheduledDetailed = unscheduled.map((engineGameId) => ({
       unscheduled,
       unusedSlotCount,
       unscheduledDetailed,
-
+scheduleMeta: meta,
       // ✅ Upgrade 4 response fields
       blockedCount: blocked.length,
       blocked,
