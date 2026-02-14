@@ -33,7 +33,8 @@ export type ParticipantRef =
 export type GameStatus = "UNSCHEDULED" | "SCHEDULED" | "FINAL";
 
 /** Where a game lives in the tournament */
-export type StageType = "POOL_PLAY" | "PLACEMENT" | "PLAYOFFS";
+export type StageType = "POOL_PLAY" | "PLACEMENT" | "PLAYOFFS" | "JAMBOREE";
+
 
 /** Core game object produced by the engine */
 export type Game = {

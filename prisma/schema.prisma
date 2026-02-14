@@ -93,17 +93,21 @@ model Times {
 }
 
 model Bracket {
-  id             Int      @id @default(autoincrement())
-  name           String
-  youthLevel     String
-  date           String
-  image          String
-  bracketName    String
+  id          Int    @id @default(autoincrement())
+  name        String
+  youthLevel  String
+  date        String
+  image       String
+  bracketName String
+
+  /// Distinguish between classic pool-play + placement vs festival (no standings/advancement)
+  tournamentFormat String @default("POOL_PLACEMENT") // POOL_PLACEMENT | JAMBOREE
+
   // --- tournament engine fields ---
   format         String   @default("ROUND_ROBIN") // ROUND_ROBIN, SINGLE_ELIMINATION...
   engineConfig   Json?
   standingsRules Json?
-  games          Game[] // New relation to games
+  games          Game[]
   teams          Team[]
   times          Times[]
   createdAt      DateTime @default(now())
