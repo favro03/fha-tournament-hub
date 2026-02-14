@@ -4,9 +4,8 @@ import { prisma } from "@/lib/prisma";
 import {
   getMinRestMinutes,
   makeRestMinutesResolver,
-  parseLevelFromStageId,
   restMinutesForLevelToken,
-  scheduleGamesGreedy,
+  scheduleGamesGreedySmart,
 } from "@/lib/tournament-engine/scheduling/scheduleGames";
 import type { ParticipantRef } from "@/lib/tournament-engine/types";
 
@@ -210,13 +209,15 @@ export async function POST(
       stageIdToRestMinutes,
     });
 
-    const { assignments, unscheduled, unscheduledDetailed } =
-      scheduleGamesGreedy({
-        games: schedulable,
-        slots: slotInputs,
-        minRestMinutes: derivedMinRestMinutes,
-        restMinutesForGame,
-      });
+    const scheduleResult = scheduleGamesGreedySmart({
+      games: schedulable,
+      slots: slotInputs,
+      minRestMinutes: derivedMinRestMinutes,
+      restMinutesForGame,
+      maxAttempts: 7,
+    });
+
+    const { assignments, unscheduled, unscheduledDetailed } = scheduleResult;
 
     const createdTimesByAssignment = await prisma.$transaction(async (tx) => {
       const created: any[] = [];
@@ -279,6 +280,7 @@ export async function POST(
 
       ...(debug && {
         restOverridesCount: Object.keys(stageIdToRestMinutes).length,
+        greedySmart: scheduleResult.debug,
       }),
 
       createdSlotCount: createdTimesByAssignment.length,
