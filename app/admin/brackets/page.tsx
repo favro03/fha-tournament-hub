@@ -46,6 +46,9 @@ const AdminBracketsPage = async () => {
                                         <Button asChild variant='outline' size='sm'>
                                             <Link href={`/admin/brackets/${bracket.id}`}>Edit</Link>
                                         </Button>
+                                        <Button asChild variant='outline' size='sm' className='ml-2'>
+                                            <Link href={`/admin/brackets/${bracket.id}/schedule`}>Schedule</Link>
+                                        </Button>
                                         <DeleteDialog id={bracket.id.toString()} action={deleteBracket} />
                                     </TableCell>
                                 </TableRow>
