@@ -150,6 +150,16 @@ model Game {
   @@unique([bracketId, engineGameId])
 }
 
+model TournamentRule {
+  id                  Int      @id @default(autoincrement())
+  youthLevel          String   @unique // ex: "MITE", "SQUIRT", "PEEWEE", "BANTAM"
+  gameMinutes         Int // ex: 60
+  zamboniMinutes      Int // ex: 15
+  restAfterEndMinutes Int // ex: 120 (strict break AFTER game ends)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
 // --- Brackets-Manager/Prisma-DB Required Enums and Models ---
 
 enum StageType {

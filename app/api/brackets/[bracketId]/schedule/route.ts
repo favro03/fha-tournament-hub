@@ -11,7 +11,7 @@ import {
 import type { ParticipantRef } from "@/lib/tournament-engine/types";
 
 type Body = {
-  slots: Array<{ start: string; location: string }>;
+  slots: Array<{ start: string; location: string; allowedStageTypes?: string[] }>;
   stageTypes?: string[];
 };
 
@@ -31,10 +31,7 @@ function dateISO(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 function timeHM(d: Date) {
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 function isTeamRef(
@@ -54,7 +51,6 @@ function refType(ref: ParticipantRef | null): string {
   if (!ref) return "NULL";
   return (ref as any).type ?? "UNKNOWN";
 }
-
 
 function refToDisplayName(
   ref: ParticipantRef | null,
@@ -141,7 +137,28 @@ export async function POST(
     const debug = url.searchParams.get("debug") === "1";
     const preview = url.searchParams.get("preview") === "1";
 
-    const derivedMinRestMinutes = getMinRestMinutes(bracket.youthLevel);
+    // ✅ DB-backed strict rules (Option B)
+    const normalizedLevel = String(bracket.youthLevel ?? "")
+      .trim()
+      .toUpperCase();
+
+    const rule =
+      (await prisma.tournamentRule.findUnique({
+        where: { youthLevel: normalizedLevel },
+        select: {
+          youthLevel: true,
+          gameMinutes: true,
+          zamboniMinutes: true,
+          restAfterEndMinutes: true,
+        },
+      })) ?? null;
+
+    // Fallbacks if rule row not found (should rarely happen once seeded)
+    const derivedMinRestMinutes =
+      rule?.restAfterEndMinutes ?? getMinRestMinutes(bracket.youthLevel);
+
+    // This must be passed to scheduleGamesGreedySmart (or it will behave wrong)
+    const gameDurationMinutes = rule?.gameMinutes ?? 60;
 
     const allowedStageTypes =
       Array.isArray(body.stageTypes) && body.stageTypes.length > 0
@@ -215,10 +232,14 @@ export async function POST(
       )
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
+    // ✅ IMPORTANT: keep allowedStageTypes so engine can enforce slot constraints
     const slotInputs = validSlots.map((s, idx) => ({
       id: String(idx),
       start: s.start,
       location: s.location,
+      allowedStageTypes: Array.isArray(s.allowedStageTypes)
+        ? s.allowedStageTypes
+        : undefined,
     }));
 
     const slotById = new Map(slotInputs.map((s) => [s.id, s]));
@@ -227,57 +248,52 @@ export async function POST(
       where: { bracketId },
       select: { id: true, teamName: true },
     });
-    const teamsById = new Map(
-      teams.map((t) => [String(t.id), t.teamName])
-    );
+    const teamsById = new Map(teams.map((t) => [String(t.id), t.teamName]));
 
     let totalGames = games.length;
-let stageTypeFiltered = 0;
-let alreadyScheduled = 0;
-let unresolvedRefs = 0;
-let statusFiltered = 0;
+    let stageTypeFiltered = 0;
+    let alreadyScheduled = 0;
+    let unresolvedRefs = 0;
+    let statusFiltered = 0;
 
-const schedulable = games
-  .filter((g) => {
-    if (!allowedStageTypes.has(g.stageType)) {
-      stageTypeFiltered++;
-      return false;
-    }
+    const schedulable = games
+      .filter((g) => {
+        if (!allowedStageTypes.has(g.stageType)) {
+          stageTypeFiltered++;
+          return false;
+        }
 
-    if (g.status !== "UNSCHEDULED") {
-      statusFiltered++;
-      return false;
-    }
+        if (g.status !== "UNSCHEDULED") {
+          statusFiltered++;
+          return false;
+        }
 
-    if (g.timesId != null) {
-      alreadyScheduled++;
-      return false;
-    }
+        if (g.timesId != null) {
+          alreadyScheduled++;
+          return false;
+        }
 
-    const homeRef = (g.homeRef ?? null) as ParticipantRef | null;
-    const awayRef = (g.awayRef ?? null) as ParticipantRef | null;
+        const homeRef = (g.homeRef ?? null) as ParticipantRef | null;
+        const awayRef = (g.awayRef ?? null) as ParticipantRef | null;
 
-    if (!isResolvedForScheduling(homeRef, awayRef)) {
-      unresolvedRefs++;
-      return false;
-    }
+        if (!isResolvedForScheduling(homeRef, awayRef)) {
+          unresolvedRefs++;
+          return false;
+        }
 
-    return true;
-  })
-  .map((g) => ({
-    engineGameId: g.engineGameId,
-    stageType: g.stageType,
-    stageId: g.stageId,
-    homeRef: g.homeRef as ParticipantRef,
-    awayRef: g.awayRef as ParticipantRef,
-  }));
+        return true;
+      })
+      .map((g) => ({
+        engineGameId: g.engineGameId,
+        stageType: g.stageType,
+        stageId: g.stageId,
+        homeRef: g.homeRef as ParticipantRef,
+        awayRef: g.awayRef as ParticipantRef,
+      }));
 
-const schedulableCount = schedulable.length;
+    const schedulableCount = schedulable.length;
 
-
-    const stageIdToRestMinutes = extractStageIdToRestMinutes(
-      bracket.engineConfig
-    );
+    const stageIdToRestMinutes = extractStageIdToRestMinutes(bracket.engineConfig);
 
     const restMinutesForGame = makeRestMinutesResolver({
       fallbackMinutes: derivedMinRestMinutes,
@@ -287,17 +303,15 @@ const schedulableCount = schedulable.length;
     const scheduleResult = scheduleGamesGreedySmart({
       games: schedulable,
       slots: slotInputs,
-      minRestMinutes: derivedMinRestMinutes,
+      minRestMinutes: derivedMinRestMinutes, // REST-AFTER-END fallback
       restMinutesForGame,
       maxAttempts: 7,
+      gameDurationMinutes, // ✅ critical for strict “rest after end”
     });
 
-    const { assignments, unscheduled, unscheduledDetailed } =
-      scheduleResult;
+    const { assignments, unscheduled, unscheduledDetailed } = scheduleResult;
 
-    const gameById = new Map(
-      games.map((g) => [g.engineGameId, g])
-    );
+    const gameById = new Map(games.map((g) => [g.engineGameId, g]));
 
     const scheduledGamesPreview: PreviewScheduledGame[] = assignments
       .map((a) => {
@@ -338,52 +352,63 @@ const schedulableCount = schedulable.length;
       }));
 
     if (!preview) {
-  await prisma.$transaction(async (tx) => {
-    for (const a of assignments) {
-      const slot = slotById.get(a.slotId);
-      if (!slot) continue;
+      await prisma.$transaction(async (tx) => {
+        for (const a of assignments) {
+          const slot = slotById.get(a.slotId);
+          if (!slot) continue;
 
-      const dt = new Date(slot.start);
+          const dt = new Date(slot.start);
 
-      const timesRow = await tx.times.create({
-        data: {
-          bracketId,
-          day: weekdayShort(dt),
-          date: dateISO(dt),
-          timeSlots: slot.start,
-          location: slot.location,
-          gameType: bracket.format ?? "",
-          type: "SLOT",
-        },
-        select: { id: true },
-      });
+          const timesRow = await tx.times.create({
+            data: {
+              bracketId,
+              day: weekdayShort(dt),
+              date: dateISO(dt),
+              timeSlots: slot.start,
+              location: slot.location,
+              gameType: bracket.format ?? "",
+              type: "SLOT",
+            },
+            select: { id: true },
+          });
 
-      await tx.game.update({
-        where: {
-          bracketId_engineGameId: {
-            bracketId,
-            engineGameId: a.engineGameId,
-          },
-        },
-        data: {
-          timesId: timesRow.id,
-          day: weekdayShort(dt),
-          date: dateISO(dt),
-          time: timeHM(dt),
-          location: slot.location,
-          status: "SCHEDULED",
-        },
+          await tx.game.update({
+            where: {
+              bracketId_engineGameId: {
+                bracketId,
+                engineGameId: a.engineGameId,
+              },
+            },
+            data: {
+              timesId: timesRow.id,
+              day: weekdayShort(dt),
+              date: dateISO(dt),
+              time: timeHM(dt),
+              location: slot.location,
+              status: "SCHEDULED",
+            },
+          });
+        }
       });
     }
-  });
-}
 
     return NextResponse.json({
       ok: true,
       preview,
       bracketId,
       youthLevel: bracket.youthLevel,
+
+      // Helpful for verifying strict behavior
+      rulesApplied: rule ?? {
+        youthLevel: normalizedLevel,
+        gameMinutes: gameDurationMinutes,
+        zamboniMinutes: 15,
+        restAfterEndMinutes: derivedMinRestMinutes,
+      },
+
       derivedMinRestMinutes,
+      gameDurationMinutes,
+
       scheduledCount: assignments.length,
       unscheduledCount: unscheduled.length,
       unusedSlotCount: slotInputs.length - assignments.length,
@@ -393,18 +418,18 @@ const schedulableCount = schedulable.length;
       scheduledGamesPreview,
       unusedSlotsPreview,
       ...(debug && {
-  greedySmart: scheduleResult.debug,
-  stageIdToRestMinutes,
-  diagnostics: {
-    totalGames,
-    stageTypeFiltered,
-    statusFiltered,
-    alreadyScheduled,
-    unresolvedRefs,
-    schedulableCount,
-  },
-}),
-
+        greedySmart: scheduleResult.debug,
+        stageIdToRestMinutes,
+        diagnostics: {
+          totalGames,
+          stageTypeFiltered,
+          statusFiltered,
+          alreadyScheduled,
+          unresolvedRefs,
+          schedulableCount,
+          unresolvedRefsCount: unresolvedRefs,
+        },
+      }),
     });
   } catch (err: any) {
     console.error("SCHEDULE ERROR:", err);

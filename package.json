@@ -2,13 +2,19 @@
   "name": "fha-tournament-hub",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
+"scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "seed": "ts-node --transpile-only db/seed.ts",
+    "db:seed": "npm run seed"
   },
+   "prisma": {
+    "seed": "ts-node --transpile-only db/seed.ts"
+  },
+
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
     "@hookform/resolvers": "^5.2.2",

@@ -36,56 +36,71 @@ const BUILD_OPTIONS = [
   { value: "JAMBOREE", label: "Jamboree" },
 ] as const;
 
-const bracketFormSchema = z
-  .object({
-    name: z.string().min(1, "Name is required"),
-    youthLevel: z.string().min(1, "Division is required"),
+type BracketFormMode = "create" | "update";
 
-    startDate: z.string().min(1, "Start date is required"),
-    endDate: z.string().optional(),
+function makeBracketFormSchema(mode: BracketFormMode) {
+  return z
+    .object({
+      name: z.string().min(1, "Name is required"),
+      youthLevel: z.string().min(1, "Division is required"),
 
-    bracketSource: z.enum(["UPLOAD", "BUILD"], {
-      required_error: "Bracket option is required",
-    }),
+      startDate: z.string().min(1, "Start date is required"),
+      endDate: z.string().optional(),
 
-    image: z.string().optional(),
+      bracketSource: z.enum(["UPLOAD", "BUILD"], {
+        required_error: "Bracket option is required",
+      }),
 
-    stageType: z.string().optional(), // POOL_BRACKET | JAMBOREE
-    seeding: z.string().optional(), // comma list of team names
-  })
-  .superRefine((val, ctx) => {
-    if (val.bracketSource === "UPLOAD") {
-      if (!val.image || val.image.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["image"],
-          message: "Please upload an image or switch to Build.",
-        });
-      }
-    }
+      image: z.string().optional(),
 
-    if (val.bracketSource === "BUILD") {
-      if (!val.stageType || val.stageType.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["stageType"],
-          message: "Please select a build option (Pool+Bracket or Jamboree).",
-        });
+      stageType: z.string().optional(), // POOL_BRACKET | JAMBOREE
+      seeding: z.string().optional(), // comma list of team names
+    })
+    .superRefine((val, ctx) => {
+      // UPLOAD always requires an image
+      if (val.bracketSource === "UPLOAD") {
+        if (!val.image || val.image.trim().length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["image"],
+            message: "Please upload an image or switch to Build.",
+          });
+        }
       }
 
-      const seeding = (val.seeding ?? "").trim();
-      const teams = seeding.length ? seeding.split(",").map((s) => s.trim()) : [];
-      if (teams.length < 2) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["seeding"],
-          message: "Please select at least 2 teams.",
-        });
-      }
-    }
-  });
+      // BUILD always requires a build option
+      if (val.bracketSource === "BUILD") {
+        if (!val.stageType || val.stageType.trim().length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["stageType"],
+            message: "Please select a build option (Pool+Bracket or Jamboree).",
+          });
+        }
 
-type FormValues = z.infer<typeof bracketFormSchema>;
+        // Only require team seeding on CREATE.
+        // On UPDATE, teams already exist in the DB and we are only editing metadata.
+        if (mode === "create") {
+          const seeding = (val.seeding ?? "").trim();
+          const teams = seeding.length
+            ? seeding
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [];
+          if (teams.length < 2) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["seeding"],
+              message: "Please select at least 2 teams.",
+            });
+          }
+        }
+      }
+    });
+}
+
+type FormValues = z.infer<ReturnType<typeof makeBracketFormSchema>>;
 
 export type BracketFormInitial = {
   id?: number;
@@ -129,10 +144,12 @@ export default function BracketForm({
   mode = "create",
   initial,
 }: {
-  mode?: "create" | "update";
+  mode?: BracketFormMode;
   initial?: BracketFormInitial;
 }) {
   const router = useRouter();
+
+  const bracketFormSchema = useMemo(() => makeBracketFormSchema(mode), [mode]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(bracketFormSchema),
@@ -476,7 +493,8 @@ export default function BracketForm({
               )}
             />
 
-            {stageType && stageType.length > 0 && (
+            {/* Teams only matter when generating a new bracket. */}
+            {mode === "create" && stageType && stageType.length > 0 && (
               <div className="mb-6 space-y-3">
                 <FormLabel>Teams</FormLabel>
 
@@ -540,6 +558,13 @@ export default function BracketForm({
                   Select total teams. You can edit names now or later.
                 </p>
               </div>
+            )}
+
+            {mode === "update" && (
+              <p className="text-xs text-muted-foreground">
+                Teams and generated games are not edited here. Use the Teams/Bracket tools
+                (or a future “Regenerate” action) if you need to rebuild structure.
+              </p>
             )}
           </>
         )}

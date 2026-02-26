@@ -4,6 +4,7 @@ export type TimeSlotInput = {
   id: string;
   start: string;
   location: string;
+  allowedStageTypes?: string[];
 };
 
 export type SchedulableGame = {
@@ -25,6 +26,7 @@ function isTeamRef(
   return !!ref && ref.type === "TEAM" && typeof (ref as any).teamId === "string";
 }
 
+// NOTE: This is REST-AFTER-END minutes, not "between starts".
 export function getMinRestMinutes(youthLevel: string) {
   const lvl = (youthLevel ?? "").toUpperCase();
   return lvl === "MITE" || lvl === "MITES" ? 60 : 120;
@@ -183,7 +185,6 @@ export type GreedyScheduleDebug = {
   }>;
 };
 
-
 export type GreedyScheduleResultWithDebug = GreedyScheduleResult & {
   debug?: GreedyScheduleDebug;
 };
@@ -321,13 +322,33 @@ function sortGamesMostConstrainedFirst(args: {
   });
 }
 
+/**
+ * ✅ Upgrade 10:
+ * Slots may restrict which stage types can be scheduled in them.
+ * If allowedStageTypes is omitted/empty, the slot is treated as "allowed for all" (backward compatible).
+ */
+function slotAllowsStageType(slot: TimeSlotInput, stageType: string) {
+  const allowed = slot.allowedStageTypes;
+  if (!allowed || allowed.length === 0) return true;
+  return allowed.includes(stageType);
+}
+
 function scheduleGamesGreedyCore(args: {
   gamesOrdered: SchedulableGame[];
   slots: TimeSlotInput[];
-  minRestMinutes: number;
-  restMinutesForGame?: RestMinutesResolver;
+  minRestMinutes: number; // REST-AFTER-END minutes
+  restMinutesForGame?: RestMinutesResolver; // REST-AFTER-END minutes
+  gameDurationMinutes: number; // e.g. 60
 }): GreedyScheduleResult {
-  const { gamesOrdered, slots, minRestMinutes, restMinutesForGame } = args;
+  const {
+    gamesOrdered,
+    slots,
+    minRestMinutes,
+    restMinutesForGame,
+    gameDurationMinutes,
+  } = args;
+
+  const gameDurationMs = Math.max(0, gameDurationMinutes) * 60 * 1000;
 
   const sortedSlots = [...slots].sort(
     (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
@@ -346,12 +367,13 @@ function scheduleGamesGreedyCore(args: {
   const canTeamPlayAt = (
     teamId: string,
     slotStart: number,
-    requiredRestMs: number
+    requiredGapMs: number
   ) => {
     const starts = startsByTeam.get(teamId);
     if (!starts || starts.length === 0) return true;
     for (const prev of starts) {
-      if (Math.abs(slotStart - prev) < requiredRestMs) return false;
+      // Strict rule: nextStart must be >= prevStart + requiredGapMs
+      if (Math.abs(slotStart - prev) < requiredGapMs) return false;
     }
     return true;
   };
@@ -375,10 +397,14 @@ function scheduleGamesGreedyCore(args: {
     const homeId = g.homeRef.teamId;
     const awayId = g.awayRef.teamId;
 
-    const gameRestMinutes = Number.isFinite(restMinutesForGame?.(g))
+    // restAfterEndMinutes = minutes of break AFTER the game ends
+    const restAfterEndMinutes = Number.isFinite(restMinutesForGame?.(g))
       ? (restMinutesForGame!(g) as number)
       : minRestMinutes;
-    const gameRestMs = Math.max(0, gameRestMinutes) * 60 * 1000;
+
+    // Required gap between START times = game duration + rest after end
+    const requiredGapMs =
+      gameDurationMs + Math.max(0, restAfterEndMinutes) * 60 * 1000;
 
     let placed = false;
     let sawUnusedSlot = false;
@@ -386,13 +412,17 @@ function scheduleGamesGreedyCore(args: {
 
     for (const slot of sortedSlots) {
       if (usedSlotIds.has(slot.id)) continue;
+
+      // ✅ Upgrade 10: enforce slot → stageType compatibility
+      if (!slotAllowsStageType(slot, g.stageType)) continue;
+
       sawUnusedSlot = true;
 
       const slotStart = new Date(slot.start).getTime();
       if (!Number.isFinite(slotStart)) continue;
 
-      const homeOk = canTeamPlayAt(homeId, slotStart, gameRestMs);
-      const awayOk = canTeamPlayAt(awayId, slotStart, gameRestMs);
+      const homeOk = canTeamPlayAt(homeId, slotStart, requiredGapMs);
+      const awayOk = canTeamPlayAt(awayId, slotStart, requiredGapMs);
 
       if (homeOk && awayOk) {
         assignments.push({ engineGameId: g.engineGameId, slotId: slot.id });
@@ -424,30 +454,34 @@ function scheduleGamesGreedyCore(args: {
 export function scheduleGamesGreedy(args: {
   games: SchedulableGame[];
   slots: TimeSlotInput[];
-  minRestMinutes: number;
+  minRestMinutes: number; // REST-AFTER-END
   restMinutesForGame?: RestMinutesResolver;
+  gameDurationMinutes: number;
 }): GreedyScheduleResult {
-  const { games, slots, minRestMinutes, restMinutesForGame } = args;
+  const { games, slots, minRestMinutes, restMinutesForGame, gameDurationMinutes } =
+    args;
+
   return scheduleGamesGreedyCore({
     gamesOrdered: sortGamesDefault(games),
     slots,
     minRestMinutes,
     restMinutesForGame,
+    gameDurationMinutes,
   });
 }
 
 /**
  * Upgrade 8.7 – Smarter Slot Usage
  *
- * Incremental improvement: run the existing greedy scheduler multiple times
- * with different (deterministic) game orderings, and keep the best result
- * (max scheduled games).
+ * Run the greedy scheduler multiple times with different deterministic orderings,
+ * keep the best result (max scheduled games).
  */
 export function scheduleGamesGreedySmart(args: {
   games: SchedulableGame[];
   slots: TimeSlotInput[];
-  minRestMinutes: number;
+  minRestMinutes: number; // REST-AFTER-END
   restMinutesForGame?: RestMinutesResolver;
+  gameDurationMinutes: number; // ✅ required now
   maxAttempts?: number; // default 7
 }): GreedyScheduleResultWithDebug {
   const {
@@ -455,6 +489,7 @@ export function scheduleGamesGreedySmart(args: {
     slots,
     minRestMinutes,
     restMinutesForGame,
+    gameDurationMinutes,
     maxAttempts,
   } = args;
 
@@ -486,7 +521,7 @@ export function scheduleGamesGreedySmart(args: {
     }),
   });
 
-  // Add a few deterministic shuffles of the default ordering.
+  // Add deterministic shuffles of the default ordering.
   const shuffleCount = Math.max(0, attemptCap - strategies.length);
   for (let i = 0; i < shuffleCount; i++) {
     const seed = (seedBase + i * 1013904223) >>> 0;
@@ -498,7 +533,7 @@ export function scheduleGamesGreedySmart(args: {
 
   const tried = strategies.slice(0, attemptCap);
 
-   const attemptStats: Array<{
+  const attemptStats: Array<{
     strategy: string;
     scheduledCount: number;
     restConflicts: number;
@@ -521,6 +556,7 @@ export function scheduleGamesGreedySmart(args: {
     slots,
     minRestMinutes,
     restMinutesForGame,
+    gameDurationMinutes,
   });
 
   {
@@ -533,10 +569,8 @@ export function scheduleGamesGreedySmart(args: {
     });
   }
 
-
   const restConflictCount = (r: GreedyScheduleResult) =>
-    r.unscheduledDetailed.filter((u) => u.reason === "REST_RULE_CONFLICT")
-      .length;
+    r.unscheduledDetailed.filter((u) => u.reason === "REST_RULE_CONFLICT").length;
 
   const isBetter = (a: GreedyScheduleResult, b: GreedyScheduleResult) => {
     if (a.assignments.length !== b.assignments.length)
@@ -561,6 +595,7 @@ export function scheduleGamesGreedySmart(args: {
       slots,
       minRestMinutes,
       restMinutesForGame,
+      gameDurationMinutes,
     });
 
     const c = countReasons(res);
@@ -577,7 +612,6 @@ export function scheduleGamesGreedySmart(args: {
     }
   }
 
-
   return {
     ...best,
     debug: {
@@ -587,5 +621,4 @@ export function scheduleGamesGreedySmart(args: {
       attemptStats,
     },
   };
-
 }
