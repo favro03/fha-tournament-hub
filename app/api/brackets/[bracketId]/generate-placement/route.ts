@@ -1,15 +1,14 @@
-// app/api/brackets/[bracketId]/generate-placement/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { ParticipantRef } from "@/lib/tournament-engine/types";
 
 type Body = {
   poolId?: string;
-  clearExisting?: boolean; // if true, deletes existing PLACEMENT games for this pool before creating
+  clearExisting?: boolean;
 };
 
-function poolRank(rank: number): ParticipantRef {
-  return { type: "POOL_RANK", rank } as any;
+function poolRank(poolId: string, rank: number): ParticipantRef {
+  return { type: "POOL_RANK", poolId, rank };
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ bracketId: string }> }) {
@@ -34,7 +33,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
       return NextResponse.json({ ok: false, error: "Bracket not found" }, { status: 404 });
     }
 
-    // If placement games already exist for this pool, we can return early unless clearExisting=true.
     const existing = await prisma.game.findMany({
       where: { bracketId, stageType: "PLACEMENT", stageId: poolId },
       select: { engineGameId: true },
@@ -53,7 +51,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
       });
     }
 
-    // Minimal 4-team placement round: 1v4 and 2v3
     const gamesToCreate = [
       {
         engineGameId: `place:${poolId}:1v4`,
@@ -61,8 +58,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
         stageId: poolId,
         round: 1,
         status: "UNSCHEDULED",
-        homeRef: poolRank(1) as any,
-        awayRef: poolRank(4) as any,
+        homeRef: poolRank(poolId, 1) as any,
+        awayRef: poolRank(poolId, 4) as any,
         homeTeam: "Seed 1",
         awayTeam: "Seed 4",
         result: null as any,
@@ -78,8 +75,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
         stageId: poolId,
         round: 1,
         status: "UNSCHEDULED",
-        homeRef: poolRank(2) as any,
-        awayRef: poolRank(3) as any,
+        homeRef: poolRank(poolId, 2) as any,
+        awayRef: poolRank(poolId, 3) as any,
         homeTeam: "Seed 2",
         awayTeam: "Seed 3",
         result: null as any,
@@ -98,7 +95,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
         });
       }
 
-      // create one-by-one so it works even if your prisma model has fields not supported by createMany
       for (const g of gamesToCreate) {
         await tx.game.create({
           data: {

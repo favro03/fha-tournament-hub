@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 type GameRow = {
@@ -43,6 +44,17 @@ type GamePatch = Partial<
     | "status"
   >
 >;
+
+type SaveResponse = {
+  ok: boolean;
+  game?: Partial<GameRow>;
+  seedSummary?: Array<{
+    poolId: string;
+    orderedTeamIds: string[];
+    poolPlayComplete: boolean;
+  }>;
+  error?: string;
+};
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -123,6 +135,8 @@ export default function AdminGamesTable({
   bracketId: number;
   initialGames: GameRow[];
 }) {
+  const router = useRouter();
+
   const [gamesById, setGamesById] = useState<Record<number, GameRow>>(() =>
     Object.fromEntries(initialGames.map((game) => [game.id, game]))
   );
@@ -131,7 +145,6 @@ export default function AdminGamesTable({
     () => Object.fromEntries(initialGames.map((game) => [game.id, "saved"]))
   );
 
-  // Freeze section membership/order from initial dataset.
   const sections = useMemo(() => buildSections(initialGames), [initialGames]);
 
   const gamesByIdRef = useRef(gamesById);
@@ -139,6 +152,7 @@ export default function AdminGamesTable({
     {}
   );
   const saveVersionRef = useRef<Record<number, number>>({});
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     gamesByIdRef.current = gamesById;
@@ -149,23 +163,32 @@ export default function AdminGamesTable({
       for (const timer of Object.values(timersRef.current)) {
         if (timer) clearTimeout(timer);
       }
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
     };
   }, []);
 
   const updateGame = useCallback(
-    async (gameId: number, patch: GamePatch) => {
+    async (gameId: number, patch: GamePatch): Promise<SaveResponse> => {
       const res = await fetch(`/api/game-by-id/${gameId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bracketId, patch }),
       });
 
-      const json = await res.json();
+      const json = (await res.json()) as SaveResponse;
       if (!json.ok) throw new Error(json.error ?? "Update failed");
-      return json.game;
+      return json;
     },
     [bracketId]
   );
+
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+
+    refreshTimeoutRef.current = setTimeout(() => {
+      router.refresh();
+    }, 300);
+  }, [router]);
 
   const flushSave = useCallback(
     async (gameId: number, version: number) => {
@@ -175,7 +198,7 @@ export default function AdminGamesTable({
       setSaveStateById((prev) => ({ ...prev, [gameId]: "saving" }));
 
       try {
-        const saved = await updateGame(gameId, {
+        const response = await updateGame(gameId, {
           date: currentRow.date,
           time: currentRow.time,
           location: currentRow.location,
@@ -191,10 +214,17 @@ export default function AdminGamesTable({
             ...prev,
             [gameId]: {
               ...prev[gameId],
-              ...saved,
+              ...(response.game ?? {}),
             },
           }));
           setSaveStateById((prev) => ({ ...prev, [gameId]: "saved" }));
+        }
+
+        const shouldRefresh =
+          response.seedSummary?.some((s) => s.poolPlayComplete) ?? false;
+
+        if (shouldRefresh) {
+          scheduleRefresh();
         }
       } catch {
         if ((saveVersionRef.current[gameId] ?? 0) === version) {
@@ -202,7 +232,7 @@ export default function AdminGamesTable({
         }
       }
     },
-    [updateGame]
+    [scheduleRefresh, updateGame]
   );
 
   const scheduleSave = useCallback(
