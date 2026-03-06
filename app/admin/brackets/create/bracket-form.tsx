@@ -55,6 +55,11 @@ function makeBracketFormSchema(mode: BracketFormMode) {
 
       stageType: z.string().optional(), // POOL_BRACKET | JAMBOREE
       seeding: z.string().optional(), // comma list of team names
+
+      // ✅ NEW: Guaranteed pool games per team (create + pool bracket only)
+      guaranteedGamesPerTeam: z
+        .union([z.string(), z.number()])
+        .optional(),
     })
     .superRefine((val, ctx) => {
       // UPLOAD always requires an image
@@ -79,7 +84,6 @@ function makeBracketFormSchema(mode: BracketFormMode) {
         }
 
         // Only require team seeding on CREATE.
-        // On UPDATE, teams already exist in the DB and we are only editing metadata.
         if (mode === "create") {
           const seeding = (val.seeding ?? "").trim();
           const teams = seeding.length
@@ -94,6 +98,29 @@ function makeBracketFormSchema(mode: BracketFormMode) {
               path: ["seeding"],
               message: "Please select at least 2 teams.",
             });
+          }
+
+          // ✅ If Pool+Bracket, require guaranteed games per team
+          if (val.stageType === "POOL_BRACKET") {
+            const gRaw = val.guaranteedGamesPerTeam;
+            const g =
+              typeof gRaw === "number"
+                ? gRaw
+                : Number(String(gRaw ?? "").trim());
+
+            if (!Number.isFinite(g) || g < 1) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["guaranteedGamesPerTeam"],
+                message: "Select guaranteed pool games per team.",
+              });
+            } else if (teams.length >= 2 && g > teams.length - 1) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["guaranteedGamesPerTeam"],
+                message: `Guaranteed games per team cannot exceed ${teams.length - 1} for ${teams.length} teams.`,
+              });
+            }
           }
         }
       }
@@ -135,9 +162,17 @@ function inferBracketSource(initial?: BracketFormInitial) {
 }
 
 function inferStageType(initial?: BracketFormInitial) {
-  // We store tournamentFormat in DB: JAMBOREE vs POOL_PLACEMENT etc.
   if (initial?.tournamentFormat === "JAMBOREE") return "JAMBOREE";
   return "POOL_BRACKET";
+}
+
+function parseTeamNamesFromSeeding(seeding?: string) {
+  const s = (seeding ?? "").trim();
+  if (!s) return [];
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
 }
 
 export default function BracketForm({
@@ -162,6 +197,7 @@ export default function BracketForm({
       image: "",
       stageType: "",
       seeding: "",
+      guaranteedGamesPerTeam: "3", // ✅ default for typical “4-game guarantee” w/ placement
     },
   });
 
@@ -181,13 +217,19 @@ export default function BracketForm({
       bracketSource: bracketSource as "UPLOAD" | "BUILD",
       image: initial.image ?? "",
       stageType: stageType ?? "",
-      seeding: "", // Optional: can be loaded later from Teams table if you want
+      seeding: "",
+      guaranteedGamesPerTeam: "3",
     });
   }, [initial, form]);
 
   const bracketSource = form.watch("bracketSource");
   const images = form.watch("image");
   const stageType = form.watch("stageType");
+  const seedingWatch = form.watch("seeding");
+  const teamCount = useMemo(
+    () => parseTeamNamesFromSeeding(seedingWatch).length,
+    [seedingWatch]
+  );
 
   const submitLabel = useMemo(() => {
     if (mode === "update") return "Update Bracket";
@@ -207,7 +249,6 @@ export default function BracketForm({
           youthLevel: values.youthLevel,
           date,
           image: values.bracketSource === "UPLOAD" ? values.image : "",
-          // Keep tournamentFormat consistent if they flip build option
           tournamentFormat:
             values.bracketSource === "UPLOAD"
               ? "IMAGE_UPLOAD"
@@ -258,18 +299,37 @@ export default function BracketForm({
       }
 
       // BUILD path -> /api/brackets/generate
-      const seeding = (values.seeding ?? "").trim();
-      const teamNames = seeding.split(",").map((s) => s.trim()).filter(Boolean);
-
+      const teamNames = parseTeamNamesFromSeeding(values.seeding);
       const teams = teamNames.map((name, idx) => ({
         id: `t${idx + 1}`,
         name,
       }));
 
+      const nTeams = teams.length;
+
+      const guaranteedRaw = values.guaranteedGamesPerTeam;
+      const gamesPerTeam =
+        typeof guaranteedRaw === "number"
+          ? guaranteedRaw
+          : Number(String(guaranteedRaw ?? "").trim());
+
+      const placementGames =
+        nTeams >= 6
+          ? [{ type: "CHAMPIONSHIP" }, { type: "THIRD_PLACE" }, { type: "FIFTH_PLACE" }]
+          : nTeams >= 4
+            ? [{ type: "CHAMPIONSHIP" }, { type: "THIRD_PLACE" }]
+            : [{ type: "CHAMPIONSHIP" }];
+
       const config =
         values.stageType === "JAMBOREE"
           ? ({ type: "JAMBOREE" } as any)
-          : ({ type: "ROUND_ROBIN" } as any);
+          : ({
+              type: "ROUND_ROBIN",
+              // ✅ This is the “guaranteed games” control
+              // 6 teams + gamesPerTeam=3 => 9 pool games + 3 placement games
+              gamesPerTeam: Number.isFinite(gamesPerTeam) ? gamesPerTeam : undefined,
+              placementGames,
+            } as any);
 
       const payload = {
         name: values.name,
@@ -505,19 +565,20 @@ export default function BracketForm({
                   <select
                     id="numTeams"
                     className="border rounded px-2 py-1 text-sm"
-                    value={(() => {
-                      const seeding = form.watch("seeding") ?? "";
-                      return seeding ? seeding.split(",").length : 0;
-                    })()}
+                    value={teamCount}
                     onChange={(e) => {
                       const num = parseInt(e.target.value, 10);
-                      const newTeams = Array.from(
-                        { length: num },
-                        (_, i) => `Team ${i + 1}`
-                      );
+                      const newTeams = Array.from({ length: num }, (_, i) => `Team ${i + 1}`);
                       form.setValue("seeding", newTeams.join(","), {
                         shouldValidate: true,
                       });
+
+                      // If they lowered team count, clamp guaranteed games per team
+                      const currentG = Number(String(form.getValues("guaranteedGamesPerTeam") ?? "3"));
+                      const maxG = Math.max(1, num - 1);
+                      if (Number.isFinite(currentG) && currentG > maxG) {
+                        form.setValue("guaranteedGamesPerTeam", String(maxG), { shouldValidate: true });
+                      }
                     }}
                   >
                     <option value={0}>Select</option>
@@ -528,6 +589,38 @@ export default function BracketForm({
                     ))}
                   </select>
                 </div>
+
+                {/* ✅ NEW FIELD: Guaranteed pool games per team */}
+                {stageType === "POOL_BRACKET" && teamCount >= 2 && (
+                  <FormField
+                    control={form.control}
+                    name="guaranteedGamesPerTeam"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Guaranteed pool games per team</FormLabel>
+                        <FormControl>
+                          <select
+                            {...field}
+                            value={String(field.value ?? "3")}
+                            className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none"
+                          >
+                            {Array.from({ length: Math.max(1, teamCount - 1) }, (_, i) => i + 1).map(
+                              (n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              )
+                            )}
+                          </select>
+                        </FormControl>
+                        <div className="text-xs text-muted-foreground">
+                          Example: 6 teams + 3 pool games per team = 9 pool games total, then placement.
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {(() => {
                   const seeding = form.watch("seeding") || "";
@@ -569,7 +662,9 @@ export default function BracketForm({
           </>
         )}
 
-        <Button type="submit">{submitLabel}</Button>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? "Creating…" : submitLabel}
+        </Button>
       </form>
     </Form>
   );

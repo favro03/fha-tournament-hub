@@ -7,7 +7,7 @@ export type DayWindow = {
 };
 
 export type Slot = {
-  start: string; // ISO string with offset from local Date -> toISOString? We'll output ISO without forcing UTC offset.
+  start: string; // local ISO-like string (no offset). UI converts to ISO with offset.
   location: string;
   allowedStageTypes?: string[];
 };
@@ -67,12 +67,13 @@ export function generateSlotsMultiDay(args: {
         out.push({
           start: startLocalISO,
           location: loc,
-          allowedStageTypes: Array.isArray(w.allowedStageTypes)
-            ? w.allowedStageTypes
-            : undefined,
+       allowedStageTypes: Array.isArray(w.allowedStageTypes)
+  ? [...w.allowedStageTypes]
+  : undefined,
         });
       }
     }
   }
-
+out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
   return out;
+}

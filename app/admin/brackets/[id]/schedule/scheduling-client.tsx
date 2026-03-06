@@ -7,6 +7,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   generateSlotsMultiDay,
   type DayWindow,
   type Slot as GeneratedSlot,
@@ -15,28 +23,51 @@ import {
 type ApiSlot = {
   start: string; // ISO with offset (recommended)
   location: string;
-  allowedStageTypes?: string[]; // ✅ IMPORTANT: wire through to API
+  allowedStageTypes?: string[];
 };
 
 type SlotRow = {
   id: string;
   startLocal: string; // "YYYY-MM-DDTHH:mm" from <input type="datetime-local">
   location: string;
-  allowedStageTypes?: string[]; // ✅ IMPORTANT: store per-row restriction
+  allowedStageTypes?: string[];
 };
 
-type PreviewResponse = {
-  ok: boolean;
+type ScheduleOkResponse = {
+  ok: true;
   preview: boolean;
   scheduledCount: number;
   unscheduledCount: number;
   unusedSlotCount: number;
   stageTypesApplied: string[];
   unscheduledDetailed: { engineGameId: string; reason: string }[];
-  scheduledGamesPreview: any[];
+  scheduledGamesPreview: Array<{
+    engineGameId: string;
+    stageType: string;
+    stageId?: string;
+    slot: { start: string; location: string };
+    home: { type: string; id?: string; name: string };
+    away: { type: string; id?: string; name: string };
+  }>;
   unusedSlotsPreview: ApiSlot[];
-  greedySmart?: any;
+  rulesApplied?: any;
+  derivedMinRestMinutes?: number;
+  gameDurationMinutes?: number;
 };
+
+type ScheduleErrorResponse = {
+  ok: false;
+  errorCode?: string;
+  error?: string;
+  message?: string;
+  hint?: string;
+  unresolvedCount?: number;
+  unresolved?: any[];
+  alreadyScheduledCount?: number;
+  examples?: any[];
+};
+
+type ScheduleResponse = ScheduleOkResponse | ScheduleErrorResponse;
 
 type RuleResponse = {
   ok: boolean;
@@ -53,8 +84,23 @@ type BracketMetaResponse = {
     id: number;
     name: string;
     youthLevel: string;
+    tournamentFormat?: string;
   };
 };
+
+type ResolvePlacementResponse =
+  | {
+      ok: true;
+      bracketId: number;
+      poolId: string;
+      poolPlayComplete: boolean;
+      message?: string;
+      blockedCount?: number;
+      blocked?: any[];
+      updatedCount?: number;
+      resolvedPlacementCount?: number;
+    }
+  | { ok: false; error?: string; message?: string };
 
 function makeId() {
   return `slot_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
@@ -126,25 +172,40 @@ function isSquirtPlus(level: string) {
   return t.includes("SQUIRT") || t.includes("PEEWEE") || t.includes("BANTAM");
 }
 
+function fmtDT(startISO: string) {
+  const d = new Date(startISO);
+  if (Number.isNaN(d.getTime())) return startISO;
+  return d.toLocaleString();
+}
+
 export default function SchedulingClient({ bracketId }: { bracketId: number }) {
   const storageKey = `schedule-slots-${bracketId}`;
 
   const [slots, setSlots] = useState<SlotRow[]>([]);
-  const [stageTypes, setStageTypes] = useState<string[]>([
-    "POOL_PLAY",
-    "PLACEMENT",
-  ]);
+  const [stageTypes, setStageTypes] = useState<string[]>(["POOL_PLAY", "PLACEMENT"]);
   const [debug, setDebug] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<PreviewResponse | null>(null);
+  const [scheduleResult, setScheduleResult] = useState<ScheduleResponse | null>(null);
 
-  // Bracket + DB-driven rules (Upgrade 10)
+  // Hardening controls
+  const [clearExistingOnApply, setClearExistingOnApply] = useState(true);
+
+  // Placement resolution
+  const [poolId, setPoolId] = useState("pool-A");
+  const [resolveResult, setResolveResult] = useState<ResolvePlacementResponse | null>(null);
+  const [resolveLoading, setResolveLoading] = useState(false);
+
+  // Bracket + DB-driven rules
   const [bracketYouthLevel, setBracketYouthLevel] = useState<string>("");
   const [rules, setRules] = useState<RuleResponse | null>(null);
+  const squirtPlus = useMemo(
+    () => (bracketYouthLevel ? isSquirtPlus(bracketYouthLevel) : false),
+    [bracketYouthLevel]
+  );
 
   // Multi-day generator (Fri–Sun)
   const [tournamentStartDate, setTournamentStartDate] =
-    useState<string>(isoDateTodayLocal()); // expected Friday
+    useState<string>(isoDateTodayLocal());
 
   const [friStart, setFriStart] = useState("17:00");
   const [friLast, setFriLast] = useState("22:00");
@@ -160,10 +221,12 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
 
   const [genLocations, setGenLocations] = useState("Rink 1");
 
-  const squirtPlus = useMemo(
-    () => (bracketYouthLevel ? isSquirtPlus(bracketYouthLevel) : false),
-    [bracketYouthLevel]
-  );
+  const wantsPlacement = useMemo(() => stageTypes.includes("PLACEMENT"), [stageTypes]);
+  const placementResolvedOk = useMemo(() => {
+    if (!wantsPlacement) return true;
+    if (!resolveResult || resolveResult.ok !== true) return false;
+    return resolveResult.poolPlayComplete === true && (resolveResult.blockedCount ?? 0) === 0;
+  }, [resolveResult, wantsPlacement]);
 
   // Load saved slots
   useEffect(() => {
@@ -242,9 +305,9 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
     setSlots((prev) => prev.filter((s) => s.id !== id));
   }
 
-  function clearSlots() {
+  function clearSlotsLocal() {
     setSlots([]);
-    setResult(null);
+    setScheduleResult(null);
   }
 
   function sortSlots() {
@@ -290,7 +353,7 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
     });
   }
 
-  // ✅ Upgrade 10 generator: Fri–Sun windows, interval from DB (read-only), Sunday split with stage tagging
+  // ✅ Generator: Fri–Sun windows, interval from DB, Sunday split with stage tagging
   function generateWeekendSlots() {
     if (!rules?.ok) return;
 
@@ -308,8 +371,11 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
       .map((l) => l.trim())
       .filter(Boolean);
 
-    const effectiveLocations =
-      squirtPlus ? ["Rink 1"] : locations.length ? locations : ["Rink 1"];
+    const effectiveLocations = squirtPlus
+      ? ["Rink 1"]
+      : locations.length
+        ? locations
+        : ["Rink 1"];
 
     const dayWindows: DayWindow[] = [
       // Fri & Sat: pool play
@@ -419,18 +485,57 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
     return c;
   }, [slotIssues]);
 
+  const intervalLabel = useMemo(() => {
+    if (!rules?.ok) return "—";
+    return `${rules.intervalMinutes} min (game ${rules.gameMinutes} + zam ${rules.zamboniMinutes})`;
+  }, [rules]);
+
+  async function callResolvePlacement() {
+    if (!wantsPlacement) {
+      setResolveResult(null);
+      return;
+    }
+    setResolveLoading(true);
+    try {
+      const res = await fetch(`/api/brackets/${bracketId}/resolve-placement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poolId }),
+      });
+      const data = (await res.json()) as ResolvePlacementResponse;
+      setResolveResult(data);
+    } finally {
+      setResolveLoading(false);
+    }
+  }
+
+  async function callClearSchedule() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/brackets/${bracketId}/schedule/clear`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stageTypes }),
+      });
+      const data = await res.json();
+      setScheduleResult({
+        ok: false,
+        errorCode: "CLEARED",
+        message: `Cleared schedule for: ${stageTypes.join(", ")}. Games cleared: ${
+          data?.gamesCleared ?? "?"
+        }. Slots deleted: ${data?.slotsDeleted ?? "?"}.`,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function callSchedule(preview: boolean) {
     if (payloadSlots.length === 0) {
-      setResult({
+      setScheduleResult({
         ok: false,
-        preview,
-        scheduledCount: 0,
-        unscheduledCount: 0,
-        unusedSlotCount: 0,
-        stageTypesApplied: [],
-        unscheduledDetailed: [],
-        scheduledGamesPreview: [],
-        unusedSlotsPreview: [],
+        errorCode: "NO_SLOTS",
+        message: "No valid time slots to schedule. Add at least one slot with start + location.",
       });
       return;
     }
@@ -441,20 +546,18 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
       if (preview) query.set("preview", "1");
       if (debug) query.set("debug", "1");
 
-      const res = await fetch(
-        `/api/brackets/${bracketId}/schedule?${query.toString()}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            stageTypes,
-            slots: payloadSlots, // ✅ now includes allowedStageTypes per slot
-          }),
-        }
-      );
+      const res = await fetch(`/api/brackets/${bracketId}/schedule?${query.toString()}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stageTypes,
+          slots: payloadSlots,
+          clearExisting: preview ? false : clearExistingOnApply,
+        }),
+      });
 
-      const data = await res.json();
-      setResult(data);
+      const data = (await res.json()) as ScheduleResponse;
+      setScheduleResult(data);
     } finally {
       setLoading(false);
     }
@@ -465,29 +568,135 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
 
     if (invalidCount > 0)
       w.push(
-        `You have ${invalidCount} slot row(s) with issues (missing fields or duplicates).`
+        `You have ${invalidCount} slot row(s) with issues (missing fields or duplicates). Only valid rows are sent.`
       );
     if (duplicateCount > 0)
       w.push(`Duplicate slots detected (${duplicateCount} row(s) flagged). Try Dedupe.`);
 
-    if (result) {
-      if (result.unscheduledCount > 0) w.push("Some games could not be scheduled.");
-      if (result.unusedSlotCount > 0) w.push("Some time slots were unused.");
-      if (result.unscheduledDetailed?.some((u) => u.reason === "REST_RULE_CONFLICT")) {
+    if (wantsPlacement && !placementResolvedOk) {
+      w.push(
+        "Placement scheduling is selected, but placement is not resolved yet. Run Resolve Placement before preview/apply."
+      );
+    }
+
+    if (scheduleResult && scheduleResult.ok === true) {
+      if (scheduleResult.unscheduledCount > 0) w.push("Some games could not be scheduled.");
+      if (scheduleResult.unusedSlotCount > 0) w.push("Some time slots were unused.");
+      if (scheduleResult.unscheduledDetailed?.some((u) => u.reason === "REST_RULE_CONFLICT")) {
         w.push("Rest rule conflicts detected.");
       }
     }
 
     return w;
-  }, [invalidCount, duplicateCount, result]);
+  }, [invalidCount, duplicateCount, wantsPlacement, placementResolvedOk, scheduleResult]);
 
-  const intervalLabel = useMemo(() => {
-    if (!rules?.ok) return "—";
-    return `${rules.intervalMinutes} min (game ${rules.gameMinutes} + zam ${rules.zamboniMinutes})`;
-  }, [rules]);
+  function toggleStageType(t: string, on: boolean) {
+    setStageTypes((prev) => {
+      const set = new Set(prev);
+      if (on) set.add(t);
+      else set.delete(t);
+      return [...set];
+    });
+    // whenever stage types change, clear any prior schedule result (to avoid confusion)
+    setScheduleResult(null);
+    setResolveResult(null);
+  }
 
   return (
     <div className="space-y-8">
+      {/* Stage Types + Flow */}
+      <Card className="p-6 space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">Scheduling Flow</h2>
+          <p className="text-sm text-muted-foreground">
+            Upgrade 9 hardening: resolve placement → preview → apply. The API will block double
+            scheduling and unresolved placement.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Sunday rule: any slot on Sunday with no allowedStageTypes will default to{" "}
+            <b>PLACEMENT</b>. Override a Sunday slot by explicitly setting allowedStageTypes to{" "}
+            <b>POOL_PLAY</b>.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="font-medium text-sm">Stage types to schedule</div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={stageTypes.includes("POOL_PLAY")}
+                onCheckedChange={(v) => toggleStageType("POOL_PLAY", !!v)}
+              />
+              <Label>POOL_PLAY</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={stageTypes.includes("PLACEMENT")}
+                onCheckedChange={(v) => toggleStageType("PLACEMENT", !!v)}
+              />
+              <Label>PLACEMENT</Label>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              (You can preview/apply either stage type, or both.)
+            </div>
+          </div>
+
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="font-medium text-sm">Resolve Placement</div>
+            <div className="text-xs text-muted-foreground">
+              Only required when scheduling PLACEMENT.
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">Pool</Label>
+              <Input value={poolId} onChange={(e) => setPoolId(e.target.value)} />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={resolveLoading || !wantsPlacement}
+              onClick={callResolvePlacement}
+            >
+              {resolveLoading ? "Resolving…" : "Resolve Placement"}
+            </Button>
+
+            {wantsPlacement && resolveResult && resolveResult.ok === true && (
+              <div className="text-xs">
+                {resolveResult.poolPlayComplete ? (
+                  <div>
+                    ✅ Pool complete. Updated: {resolveResult.updatedCount ?? 0}. Blocked:{" "}
+                    {resolveResult.blockedCount ?? 0}
+                  </div>
+                ) : (
+                  <div>
+                    ⚠ Pool not complete. {resolveResult.message ?? "Mark pool games FINAL first."}
+                  </div>
+                )}
+              </div>
+            )}
+            {wantsPlacement && resolveResult && resolveResult.ok === false && (
+              <div className="text-xs">❌ {resolveResult.message ?? resolveResult.error}</div>
+            )}
+          </div>
+
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="font-medium text-sm">Apply behavior</div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={clearExistingOnApply}
+                onCheckedChange={(v) => setClearExistingOnApply(!!v)}
+              />
+              <Label>Clear existing schedule before Apply</Label>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              If unchecked, the API will block Apply if any selected games are already scheduled.
+            </div>
+            <Button type="button" variant="outline" onClick={callClearSchedule} disabled={loading}>
+              Clear Schedule Now
+            </Button>
+          </div>
+        </div>
+      </Card>
+
       {/* Slot Management */}
       <Card className="p-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
@@ -514,7 +723,7 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
             <Button variant="outline" type="button" onClick={dedupeSlots}>
               Dedupe
             </Button>
-            <Button variant="destructive" type="button" onClick={clearSlots}>
+            <Button variant="destructive" type="button" onClick={clearSlotsLocal}>
               Clear
             </Button>
           </div>
@@ -551,12 +760,14 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
                           .split(",")
                           .map((x) => x.trim())
                           .filter(Boolean);
-                        updateSlot(slot.id, {
-                          allowedStageTypes: v.length ? v : undefined,
-                        });
+                        updateSlot(slot.id, { allowedStageTypes: v.length ? v : undefined });
                       }}
                     />
-                    <Button variant="destructive" type="button" onClick={() => removeSlot(slot.id)}>
+                    <Button
+                      variant="destructive"
+                      type="button"
+                      onClick={() => removeSlot(slot.id)}
+                    >
                       Remove
                     </Button>
                   </div>
@@ -596,7 +807,7 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
           </div>
         </div>
 
-        {/* ✅ Multi-Day Generator (Upgrade 10) */}
+        {/* Multi-Day Generator */}
         <div className="border-t pt-4 space-y-3">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="font-medium">Multi-Day Generate (Fri–Sun)</h3>
@@ -657,28 +868,41 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
 
             <div className="rounded-md border p-3 space-y-2">
               <div className="font-medium text-sm">Sunday split</div>
-
-              <div className="text-xs text-muted-foreground">
-                AM = POOL_PLAY, PM = PLACEMENT
-              </div>
+              <div className="text-xs text-muted-foreground">AM = POOL_PLAY, PM = PLACEMENT</div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs">Sun AM first</Label>
-                  <Input type="time" value={sunPoolStart} onChange={(e) => setSunPoolStart(e.target.value)} />
+                  <Input
+                    type="time"
+                    value={sunPoolStart}
+                    onChange={(e) => setSunPoolStart(e.target.value)}
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">Sun AM last</Label>
-                  <Input type="time" value={sunPoolLast} onChange={(e) => setSunPoolLast(e.target.value)} />
+                  <Input
+                    type="time"
+                    value={sunPoolLast}
+                    onChange={(e) => setSunPoolLast(e.target.value)}
+                  />
                 </div>
 
                 <div>
                   <Label className="text-xs">Sun PM first</Label>
-                  <Input type="time" value={sunPlaceStart} onChange={(e) => setSunPlaceStart(e.target.value)} />
+                  <Input
+                    type="time"
+                    value={sunPlaceStart}
+                    onChange={(e) => setSunPlaceStart(e.target.value)}
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">Sun PM last</Label>
-                  <Input type="time" value={sunPlaceLast} onChange={(e) => setSunPlaceLast(e.target.value)} />
+                  <Input
+                    type="time"
+                    value={sunPlaceLast}
+                    onChange={(e) => setSunPlaceLast(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
@@ -686,7 +910,8 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Generates starts using DB interval. Sunday PM slots are restricted to PLACEMENT so pool games cannot steal bracket time.
+              Generates starts using DB interval. Sunday PM slots are restricted to PLACEMENT so pool
+              games cannot steal bracket time.
             </p>
             <Button type="button" onClick={generateWeekendSlots} disabled={!rules?.ok}>
               Generate Weekend Slots
@@ -702,9 +927,14 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
           <Label>Debug Mode</Label>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <Button
-            disabled={loading || payloadSlots.length === 0}
+            disabled={
+              loading ||
+              payloadSlots.length === 0 ||
+              stageTypes.length === 0 ||
+              (wantsPlacement && !placementResolvedOk)
+            }
             onClick={() => callSchedule(true)}
             variant="outline"
             type="button"
@@ -712,17 +942,28 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
             Preview Schedule
           </Button>
           <Button
-            disabled={loading || payloadSlots.length === 0}
+            disabled={
+              loading ||
+              payloadSlots.length === 0 ||
+              stageTypes.length === 0 ||
+              (wantsPlacement && !placementResolvedOk)
+            }
             onClick={() => callSchedule(false)}
             type="button"
           >
             Apply Schedule
           </Button>
         </div>
+
+        {wantsPlacement && !placementResolvedOk && (
+          <div className="text-sm text-yellow-800 bg-yellow-100 rounded p-3">
+            Placement is selected but not resolved yet. Click <b>Resolve Placement</b> above.
+          </div>
+        )}
       </Card>
 
       {/* Results */}
-      {(warnings.length > 0 || result) && (
+      {(warnings.length > 0 || scheduleResult) && (
         <Card className="p-6 space-y-4">
           <h2 className="text-lg font-semibold">Schedule Summary</h2>
 
@@ -734,50 +975,114 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
             </div>
           )}
 
-          {result && (
+          {scheduleResult && scheduleResult.ok === false && (
+            <div className="bg-red-50 border border-red-200 p-3 rounded space-y-1">
+              <div className="font-medium">❌ {scheduleResult.errorCode ?? "ERROR"}</div>
+              <div className="text-sm">
+                {scheduleResult.message ?? scheduleResult.error ?? "Request failed."}
+              </div>
+              {scheduleResult.hint && (
+                <div className="text-xs text-muted-foreground">Hint: {scheduleResult.hint}</div>
+              )}
+
+              {scheduleResult.errorCode === "UNRESOLVED_PLACEMENT_GAMES" &&
+                Array.isArray(scheduleResult.unresolved) &&
+                scheduleResult.unresolved.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-sm font-medium">Unresolved placement games (examples)</div>
+                    <ul className="text-xs list-disc pl-5">
+                      {scheduleResult.unresolved.slice(0, 10).map((u: any, idx: number) => (
+                        <li key={idx}>
+                          {u.engineGameId} — {u.homeRefType} vs {u.awayRefType} ({u.stageId})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+            </div>
+          )}
+
+          {scheduleResult && scheduleResult.ok === true && (
             <>
-              <div className="grid grid-cols-3 gap-4">
-                <div>Scheduled: {result.scheduledCount}</div>
-                <div>Unscheduled: {result.unscheduledCount}</div>
-                <div>Unused Slots: {result.unusedSlotCount}</div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <div>Scheduled: {scheduleResult.scheduledCount}</div>
+                <div>Unscheduled: {scheduleResult.unscheduledCount}</div>
+                <div>Unused Slots: {scheduleResult.unusedSlotCount}</div>
               </div>
 
-              <div>
-                <h3 className="font-medium">Scheduled Games</h3>
-                <ul className="space-y-1">
-                  {result.scheduledGamesPreview?.map((g, i) => (
-                    <li key={i}>
-                      {new Date(g.slot.start).toLocaleString()} - {g.slot.location} —{" "}
-                      {g.home.name} vs {g.away.name} ({g.stageType})
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {result.unscheduledDetailed?.length > 0 && (
-                <div>
-                  <h3 className="font-medium">Unscheduled Games</h3>
-                  <ul>
-                    {result.unscheduledDetailed.map((u, i) => (
-                      <li key={i}>
-                        {u.engineGameId} — {u.reason}
-                      </li>
+              <div className="space-y-2">
+                <h3 className="font-medium">Scheduled Games Preview</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Start</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Stage</TableHead>
+                      <TableHead>Game</TableHead>
+                      <TableHead>Home</TableHead>
+                      <TableHead>Away</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {scheduleResult.scheduledGamesPreview?.map((g, i) => (
+                      <TableRow key={i}>
+                        <TableCell>{fmtDT(g.slot.start)}</TableCell>
+                        <TableCell>{g.slot.location}</TableCell>
+                        <TableCell>{g.stageType}</TableCell>
+                        <TableCell>{g.engineGameId}</TableCell>
+                        <TableCell>{g.home.name}</TableCell>
+                        <TableCell>{g.away.name}</TableCell>
+                      </TableRow>
                     ))}
-                  </ul>
+                  </TableBody>
+                </Table>
+              </div>
+
+              {scheduleResult.unscheduledDetailed?.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-medium">Unscheduled Games</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Game</TableHead>
+                        <TableHead>Reason</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {scheduleResult.unscheduledDetailed.map((u, i) => (
+                        <TableRow key={i}>
+                          <TableCell>{u.engineGameId}</TableCell>
+                          <TableCell>{u.reason}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
 
-              {result.unusedSlotsPreview?.length > 0 && (
-                <div>
+              {scheduleResult.unusedSlotsPreview?.length > 0 && (
+                <div className="space-y-2">
                   <h3 className="font-medium">Unused Slots</h3>
-                  <ul>
-                    {result.unusedSlotsPreview.map((s, i) => (
-                      <li key={i}>
-                        {new Date(s.start).toLocaleString()} - {s.location}
-                        {s.allowedStageTypes?.length ? ` — (${s.allowedStageTypes.join(",")})` : ""}
-                      </li>
-                    ))}
-                  </ul>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Start</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Allowed</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {scheduleResult.unusedSlotsPreview.map((s, i) => (
+                        <TableRow key={i}>
+                          <TableCell>{fmtDT(s.start)}</TableCell>
+                          <TableCell>{s.location}</TableCell>
+                          <TableCell>
+                            {s.allowedStageTypes?.length ? s.allowedStageTypes.join(",") : "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </>

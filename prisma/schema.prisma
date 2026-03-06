@@ -92,6 +92,11 @@ model Times {
   type String @default("")
 }
 
+enum BracketSide {
+  HOME
+  AWAY
+}
+
 model Bracket {
   id          Int    @id @default(autoincrement())
   name        String
@@ -99,6 +104,8 @@ model Bracket {
   date        String
   image       String
   bracketName String
+
+  side BracketSide @default(HOME)
 
   /// Distinguish between classic pool-play + placement vs festival (no standings/advancement)
   tournamentFormat String @default("POOL_PLACEMENT") // POOL_PLACEMENT | JAMBOREE
