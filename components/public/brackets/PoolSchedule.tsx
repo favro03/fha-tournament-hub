@@ -54,7 +54,7 @@ function getFinalDisplay(game: PublicGame) {
     return `${game.awayName} ${awayScore}-${homeScore} (Final)`;
   }
 
-  return `${game.homeName} ${homeScore}-${awayScore} (Final)`;
+  return `Tie ${homeScore}-${awayScore} (Final)`;
 }
 
 export default function PoolSchedule({

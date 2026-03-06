@@ -12,6 +12,17 @@ function isTeamRef(ref: ParticipantRef | null): ref is { type: "TEAM"; teamId: s
   return !!ref && ref.type === "TEAM" && typeof (ref as any).teamId === "string";
 }
 
+function isPoolRankRef(
+  ref: ParticipantRef | null
+): ref is { type: "POOL_RANK"; poolId: string; rank: number } {
+  return (
+    !!ref &&
+    ref.type === "POOL_RANK" &&
+    typeof (ref as any).poolId === "string" &&
+    typeof (ref as any).rank === "number"
+  );
+}
+
 function isResolvedForScheduling(homeRef: ParticipantRef | null, awayRef: ParticipantRef | null) {
   return isTeamRef(homeRef) && isTeamRef(awayRef);
 }
@@ -35,13 +46,8 @@ function refToDisplayName(ref: ParticipantRef | null, teamNameByExternalId: Map<
   return ref.type ?? "";
 }
 
-/**
- * ✅ Critical fix:
- * Convert POOL_RANK -> TEAM using orderedTeamIds (rank is 1-based).
- */
 function resolveRefUsingSeeds(ref: ParticipantRef | null, orderedTeamIds: string[]): ParticipantRef | null {
   if (!ref) return null;
-
   if (ref.type === "TEAM") return ref;
 
   if (ref.type === "POOL_RANK") {
@@ -49,10 +55,9 @@ function resolveRefUsingSeeds(ref: ParticipantRef | null, orderedTeamIds: string
     const idx = rank - 1;
     const teamId = orderedTeamIds[idx];
     if (teamId) return { type: "TEAM", teamId } as any;
-    return ref; // out of range, keep as-is
+    return ref;
   }
 
-  // If you later support WINNER_OF / LOSER_OF resolution, you can handle here.
   return ref;
 }
 
@@ -94,7 +99,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
       return NextResponse.json({ ok: false, error: "Bracket not found" }, { status: 404 });
     }
 
-    // Build engineGames and team name map from POOL_PLAY rows
     const teamNameByExternalId = new Map<string, string>();
 
     const engineGames: EngineGame[] = bracket.games.map((g) => {
@@ -119,12 +123,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
     });
 
     const teamIds = [...teamNameByExternalId.keys()];
-    const teams: TeamInput[] = teamIds.map((id) => ({ id, name: teamNameByExternalId.get(id) ?? id }));
+    const teams: TeamInput[] = teamIds.map((id) => ({
+      id,
+      name: teamNameByExternalId.get(id) ?? id,
+    }));
 
     const rules = (bracket.standingsRules ?? null) as any;
     const { orderedTeamIds, ranked } = getPoolSeedOrder({ teams, games: engineGames, poolId, rules });
 
-    const placementGamesBefore = engineGames.filter((g) => g.stageType === "PLACEMENT" && g.stageId === poolId);
+    const placementGamesBefore = engineGames.filter(
+      (g) =>
+        g.stageType === "PLACEMENT" &&
+        (
+          (isPoolRankRef(g.home as any) && (g.home as any).poolId === poolId) ||
+          (isPoolRankRef(g.away as any) && (g.away as any).poolId === poolId)
+        )
+    );
 
     const blockedBefore = placementGamesBefore
       .filter((g) => !isResolvedForScheduling((g.home ?? null) as any, (g.away ?? null) as any))
@@ -152,7 +166,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
       });
     }
 
-    // ✅ Resolve PLACEMENT games using orderedTeamIds
     const resolvedPlacement = placementGamesBefore.map((g) => {
       const homeResolved = resolveRefUsingSeeds((g.home ?? null) as any, orderedTeamIds);
       const awayResolved = resolveRefUsingSeeds((g.away ?? null) as any, orderedTeamIds);
@@ -164,21 +177,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
       };
     });
 
-    // Update only those that are not TEAM vs TEAM in DB
-    const originalById = new Map(
-      bracket.games
-        .filter((g) => g.stageType === "PLACEMENT" && g.stageId === poolId)
-        .map((g) => [g.engineGameId, { homeRef: g.homeRef as any as ParticipantRef | null, awayRef: g.awayRef as any as ParticipantRef | null }])
-    );
-
-    const toUpdate = resolvedPlacement.filter((g) => {
-      const orig = originalById.get(g.id);
-      if (!orig) return true;
-      return !isResolvedForScheduling(orig.homeRef ?? null, orig.awayRef ?? null);
-    });
-
     await prisma.$transaction(
-      toUpdate.map((g) =>
+      resolvedPlacement.map((g) =>
         prisma.game.update({
           where: {
             bracketId_engineGameId: { bracketId, engineGameId: g.id },
@@ -218,15 +218,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
         home: g.home,
         away: g.away,
       })),
-      resolvedPlacementCount: resolvedPlacement.length,
-      updatedCount: toUpdate.length,
       blockedCount: blockedAfter.length,
       blocked: blockedAfter,
     });
   } catch (err: any) {
     console.error("RESOLVE PLACEMENT ERROR:", err);
     return NextResponse.json(
-      { ok: false, error: err?.message ?? "Internal Server Error", code: err?.code, meta: err?.meta },
+      { ok: false, error: err?.message ?? "Internal Server Error" },
       { status: 500 }
     );
   }

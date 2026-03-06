@@ -219,7 +219,7 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
   const [sunPlaceStart, setSunPlaceStart] = useState("11:45");
   const [sunPlaceLast, setSunPlaceLast] = useState("16:00");
 
-  const [genLocations, setGenLocations] = useState("Rink 1");
+  const [genLocations, setGenLocations] = useState("FIA");
 
   const wantsPlacement = useMemo(() => stageTypes.includes("PLACEMENT"), [stageTypes]);
   const placementResolvedOk = useMemo(() => {
@@ -287,7 +287,7 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
   // Squirt+ UI guard: one sheet of ice
   useEffect(() => {
     if (!squirtPlus) return;
-    setGenLocations("Rink 1");
+    setGenLocations("FIA");
   }, [squirtPlus]);
 
   function addSlot() {
@@ -372,10 +372,10 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
       .filter(Boolean);
 
     const effectiveLocations = squirtPlus
-      ? ["Rink 1"]
+      ? ["FIA"]
       : locations.length
         ? locations
-        : ["Rink 1"];
+        : ["FIA"];
 
     const dayWindows: DayWindow[] = [
       // Fri & Sat: pool play
@@ -748,7 +748,7 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
                       onChange={(e) => updateSlot(slot.id, { startLocal: e.target.value })}
                     />
                     <Input
-                      placeholder="Location (e.g. Rink 1)"
+                      placeholder="Location (e.g. FIA)"
                       value={slot.location}
                       onChange={(e) => updateSlot(slot.id, { location: e.target.value })}
                     />
@@ -832,7 +832,7 @@ export default function SchedulingClient({ bracketId }: { bracketId: number }) {
                 value={genLocations}
                 disabled={squirtPlus}
                 onChange={(e) => setGenLocations(e.target.value)}
-                placeholder="Rink 1,Rink 2"
+                placeholder="FIA,Rink 2"
               />
             </div>
           </div>

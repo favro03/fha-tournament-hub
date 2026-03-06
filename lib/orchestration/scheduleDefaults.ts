@@ -15,14 +15,6 @@ function addDays(dateISO: string, days: number) {
   return toISODate(dt);
 }
 
-/**
- * Parse the tournament "date" field into Fri/Sat/Sun ISO dates.
- *
- * Supports:
- * - "YYYY-MM-DD" (assumed Friday)
- * - "YYYY-MM-DD to YYYY-MM-DD" (uses the first date as Friday)
- * - any string containing at least one YYYY-MM-DD
- */
 export function parseTournamentWeekendDates(dateRaw: string): {
   friISO: string;
   satISO: string;
@@ -39,9 +31,6 @@ export function parseTournamentWeekendDates(dateRaw: string): {
   };
 }
 
-/**
- * Hard requirements (Phase 1): fixed weekend windows.
- */
 export function buildDefaultWeekendWindows(args: {
   friISO: string;
   satISO: string;
@@ -50,7 +39,6 @@ export function buildDefaultWeekendWindows(args: {
   const { friISO, satISO, sunISO } = args;
 
   return [
-    // Day 1 (Friday): POOL_PLAY only
     {
       dateISO: friISO,
       startTime: "17:15",
@@ -58,7 +46,6 @@ export function buildDefaultWeekendWindows(args: {
       label: "Fri Pool Play",
       allowedStageTypes: ["POOL_PLAY"],
     },
-    // Day 2 (Saturday): POOL_PLAY only
     {
       dateISO: satISO,
       startTime: "08:00",
@@ -66,7 +53,6 @@ export function buildDefaultWeekendWindows(args: {
       label: "Sat Pool Play",
       allowedStageTypes: ["POOL_PLAY"],
     },
-    // Day 3 (Sunday AM): POOL_PLAY only (if needed)
     {
       dateISO: sunISO,
       startTime: "08:00",
@@ -74,7 +60,6 @@ export function buildDefaultWeekendWindows(args: {
       label: "Sun AM Pool Play",
       allowedStageTypes: ["POOL_PLAY"],
     },
-    // Day 3 (Sunday PM): PLACEMENT only
     {
       dateISO: sunISO,
       startTime: "11:45",
@@ -109,13 +94,10 @@ const SQUIRT_PLUS_TOKENS = new Set([
   "VARSITY",
 ]);
 
-/**
- * Hard requirement:
- * - 1 rink for Squirt+ levels
- * - 2 rinks otherwise
- */
 export function determineRinkLocations(normalizedYouthLevel: string): string[] {
   const t = normalizeLevelToken(normalizedYouthLevel);
   const rinkCount = SQUIRT_PLUS_TOKENS.has(t) ? 1 : 2;
-  return rinkCount === 1 ? ["Rink 1"] : ["Rink 1", "Rink 2"];
+
+  if (rinkCount === 1) return ["FIA"];
+  return ["FIA", "FIA 2"];
 }
