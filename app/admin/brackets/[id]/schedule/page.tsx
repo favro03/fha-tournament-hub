@@ -1,5 +1,9 @@
+import { unstable_noStore as noStore } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import AdminGamesTable from "./games-table";
+import ResolvePlacementButton from "./resolve-placement-button";
+
+export const dynamic = "force-dynamic";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -39,6 +43,8 @@ export default async function AdminBracketSchedulePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  noStore();
+
   const { id } = await params;
   const bracketId = Number(id);
 
@@ -75,7 +81,6 @@ export default async function AdminBracketSchedulePage({
     const slotStart = String(g.times?.timeSlots ?? "").trim();
     const slotDateISO = slotStart ? slotStart.slice(0, 10) : "";
 
-    // Prefer editable Game fields first.
     const resolvedDateISO = firstNonEmpty(g.date, g.times?.date, slotDateISO);
     const resolvedDay = resolvedDateISO ? weekdayFromISODate(resolvedDateISO) : "";
 
@@ -113,7 +118,7 @@ export default async function AdminBracketSchedulePage({
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{bracket.name}</h1>
           <div className="text-sm opacity-70">
@@ -121,13 +126,15 @@ export default async function AdminBracketSchedulePage({
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col items-end gap-2">
           <a
             className="px-3 py-2 rounded border"
             href={`/admin/brackets/${bracketId}/schedule/manual`}
           >
             Manual Scheduler
           </a>
+
+          <ResolvePlacementButton bracketId={bracketId} />
         </div>
       </div>
 
