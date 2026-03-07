@@ -1,5 +1,5 @@
-// lib/queries/publicBracketView.ts
 import { prisma } from "@/lib/prisma";
+import { getPlacementLabel } from "@/lib/bracket-labels";
 
 type PublicGame = {
   id: string;
@@ -38,7 +38,7 @@ function safeNumber(value: unknown) {
 }
 
 export async function getPublicBracketView(bracketId: number): Promise<PublicBracketView | null> {
-  const bracket = await prisma.bracket.findUnique({
+  const bracket = (await prisma.bracket.findUnique({
     where: { id: bracketId },
     select: {
       id: true,
@@ -72,7 +72,7 @@ export async function getPublicBracketView(bracketId: number): Promise<PublicBra
         },
       },
     },
-  });
+  })) as any;
 
   if (!bracket) return null;
 
@@ -84,21 +84,32 @@ export async function getPublicBracketView(bracketId: number): Promise<PublicBra
       date: bracket.date,
       tournamentFormat: bracket.tournamentFormat,
     },
-    games: bracket.games.map((game) => ({
-      id: game.engineGameId,
-      stageType: safeString(game.stageType),
-      stageId: safeString(game.stageId),
-      round: game.round ?? null,
-      status: safeString(game.status),
-      day: safeString(game.day),
-      date: safeString(game.date),
-      time: safeString(game.time),
-      location: safeString(game.location),
-      homeName: safeString(game.homeTeam) || "TBD",
-      awayName: safeString(game.awayTeam) || "TBD",
-      homeScore: safeNumber(game.homeScore),
-      awayScore: safeNumber(game.awayScore),
-      label: game.label ?? null,
-    })),
+    games: (bracket.games as any[]).map((game: any) => {
+      const homeName = safeString(game.homeTeam) || "TBD";
+      const awayName = safeString(game.awayTeam) || "TBD";
+
+      return {
+        id: game.engineGameId,
+        stageType: safeString(game.stageType),
+        stageId: safeString(game.stageId),
+        round: game.round ?? null,
+        status: safeString(game.status),
+        day: safeString(game.day),
+        date: safeString(game.date),
+        time: safeString(game.time),
+        location: safeString(game.location),
+        homeName,
+        awayName,
+        homeScore: safeNumber(game.homeScore),
+        awayScore: safeNumber(game.awayScore),
+        label: getPlacementLabel({
+          stageType: game.stageType,
+          engineGameId: game.engineGameId,
+          label: game.label ?? null,
+          homeTeam: homeName,
+          awayTeam: awayName,
+        }) || null,
+      };
+    }),
   };
 }

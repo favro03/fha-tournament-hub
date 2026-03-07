@@ -1,29 +1,9 @@
-// app/brackets/[id]/page.tsx
 import { notFound } from "next/navigation";
-import { getPublicBracketView } from "@/lib/queries/publicBracketView";
+import { getPublicBracketView, type PublicBracketView } from "@/lib/queries/publicBracketView";
 import PoolSchedule from "@/components/public/brackets/PoolSchedule";
 
-type PublicGame = {
-  id: string;
-  stageType: string;
-  stageId: string;
-  round: number | null;
-  status: string;
-  day: string;
-  date: string;
-  time: string;
-  location: string;
-  homeName: string;
-  awayName: string;
-  homeScore: number | null;
-  awayScore: number | null;
-  label?: string | null;
-};
-
-type DayGroup = {
-  dayKey: string;
-  games: PublicGame[];
-};
+type PublicGame = PublicBracketView["games"][number];
+type DayGroup = { dayKey: string; games: PublicGame[] };
 
 function isTBD(game: PublicGame) {
   return game.status === "UNSCHEDULED" || !game.date || !game.time;
@@ -102,13 +82,10 @@ export default async function PublicBracketPage(props: {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6">
-      {/* Header */}
       <div className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-1">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              {view.bracket.name}
-            </h1>
+            <h1 className="text-2xl font-bold text-slate-900">{view.bracket.name}</h1>
             <p className="text-sm text-slate-600">
               {view.bracket.youthLevel} • {formatBracketDateRange(view.bracket.date)}
             </p>
@@ -116,9 +93,9 @@ export default async function PublicBracketPage(props: {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
+      <div className="space-y-6">
         <PoolSchedule title="Pool Play" byDay={poolByDay} />
-        <PoolSchedule title="Placement" byDay={placementByDay} />
+        <PoolSchedule title="Placement Games" byDay={placementByDay} />
       </div>
     </div>
   );

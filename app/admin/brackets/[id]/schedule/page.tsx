@@ -1,7 +1,11 @@
+import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { getBracketStandingsView } from "@/lib/queries/bracketStandings";
 import AdminGamesTable from "./games-table";
 import ResolvePlacementButton from "./resolve-placement-button";
+import StandingsTable from "@/components/brackets/StandingsTable";
+import { getPlacementLabel } from "@/lib/bracket-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +52,13 @@ export default async function AdminBracketSchedulePage({
   const { id } = await params;
   const bracketId = Number(id);
 
-  const bracket = await prisma.bracket.findUnique({
-    where: { id: bracketId },
-    select: { id: true, name: true, youthLevel: true, date: true },
-  });
+  const [bracket, standings] = await Promise.all([
+    prisma.bracket.findUnique({
+      where: { id: bracketId },
+      select: { id: true, name: true, youthLevel: true, date: true },
+    }),
+    getBracketStandingsView(bracketId),
+  ]);
 
   if (!bracket) return <div className="p-6">Bracket not found.</div>;
 
@@ -97,6 +104,13 @@ export default async function AdminBracketSchedulePage({
       date: resolvedDateISO,
       time: resolvedTime,
       location: resolvedLocation,
+      displayLabel: getPlacementLabel({
+        stageType: g.stageType,
+        engineGameId: g.engineGameId,
+        label: g.label,
+        homeTeam: g.homeTeam,
+        awayTeam: g.awayTeam,
+      }),
     };
   });
 
@@ -117,7 +131,7 @@ export default async function AdminBracketSchedulePage({
   });
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{bracket.name}</h1>
@@ -127,13 +141,9 @@ export default async function AdminBracketSchedulePage({
         </div>
 
         <div className="flex flex-col items-end gap-2">
-          <a
-            className="px-3 py-2 rounded border"
-            href={`/admin/brackets/${bracketId}/schedule/manual`}
-          >
-            Manual Scheduler
-          </a>
-
+          <Link className="px-3 py-2 rounded border" href={`/brackets/${bracketId}`}>
+            Public View
+          </Link>
           <ResolvePlacementButton bracketId={bracketId} />
         </div>
       </div>
@@ -145,7 +155,7 @@ export default async function AdminBracketSchedulePage({
             (rest rules/time windows).
           </div>
           <div className="text-sm opacity-80 mt-1">
-            Use Manual Scheduler to place them, or adjust available slots.
+            Edit the open rows below or adjust the available slots, then save your changes.
           </div>
 
           <ul className="mt-3 text-sm list-disc pl-5">
@@ -159,6 +169,8 @@ export default async function AdminBracketSchedulePage({
           </ul>
         </div>
       )}
+
+      <StandingsTable standings={standings} title="Pool Standings" />
 
       <AdminGamesTable bracketId={bracketId} initialGames={gamesForUi as any} />
     </div>

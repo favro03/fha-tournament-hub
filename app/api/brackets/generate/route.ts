@@ -15,6 +15,7 @@ import {
   parseTournamentWeekendDates,
 } from "@/lib/orchestration/scheduleDefaults";
 import { applyPlacementPlaceholderSchedule } from "@/lib/orchestration/placementPlaceholders";
+import { getPlacementLabel } from "@/lib/bracket-labels";
 
 function refToDisplayName(ref: ParticipantRef, teamsById: Map<string, string>) {
   if (ref.type === "TEAM") return teamsById.get(ref.teamId) ?? ref.teamId;
@@ -163,7 +164,7 @@ export async function POST(req: Request) {
         gameType: plan.format,
         label:
           g.stageType === "PLACEMENT"
-            ? "Placement"
+            ? getPlacementLabel({ stageType: g.stageType, engineGameId: g.id, label: "" })
             : g.stageType === "JAMBOREE"
               ? "Jamboree"
               : "Pool Play",

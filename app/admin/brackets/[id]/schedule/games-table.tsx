@@ -20,6 +20,7 @@ type GameRow = {
   awayScore: number;
   homePenalty: number;
   awayPenalty: number;
+  displayLabel?: string;
 };
 
 type SaveState = "saved" | "unsaved" | "saving" | "error";
@@ -290,9 +291,10 @@ export default function AdminGamesTable({
               <div className="border-b px-3 py-2 font-medium">{section.stageType}</div>
 
               <div className="overflow-x-auto">
-                <table className="min-w-[1180px] w-full text-sm">
+                <table className="min-w-[1320px] w-full text-sm">
                   <thead className="border-b text-left">
                     <tr>
+                      <th className="p-2">Label</th>
                       <th className="p-2">Date</th>
                       <th className="p-2">Time</th>
                       <th className="p-2">Location</th>
@@ -308,6 +310,18 @@ export default function AdminGamesTable({
                   <tbody>
                     {stageGames.map((g) => (
                       <tr key={g.id} className="border-b align-top">
+                        <td className="p-2">
+                          <div className="min-w-[150px]">
+                            {g.displayLabel ? (
+                              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                                {g.displayLabel}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </div>
+                        </td>
+
                         <td className="p-2">
                           <input
                             className="w-[140px] rounded border px-2 py-1"

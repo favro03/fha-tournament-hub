@@ -1,4 +1,3 @@
-// components/public/brackets/PoolSchedule.tsx
 type PublicGame = {
   id: string;
   stageType: string;
@@ -87,31 +86,37 @@ export default function PoolSchedule({
                     className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0">
+                      {game.label ? (
+                        <div className="mb-1">
+                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                            {game.label}
+                          </span>
+                        </div>
+                      ) : null}
+
                       <div className="font-medium text-slate-900">
                         {game.homeName || "TBD"} vs {game.awayName || "TBD"}
                       </div>
 
                       <div className="text-xs text-slate-600">
-                        {game.label ? `${game.label} • ` : ""}
                         {game.location || "TBD Location"}
                       </div>
                     </div>
 
-                    <div className="shrink-0 text-sm text-slate-800">
+                    <div className="text-sm text-slate-700 sm:text-right">
+                      <div>
+                        {game.date ? formatDateMMDDYYYY(game.date) : "TBD Date"}
+                        {game.time ? ` • ${game.time}` : ""}
+                      </div>
+
                       {hasFinalScore(game) ? (
-                        <span className="font-semibold">
+                        <div className="mt-1 font-semibold text-slate-900">
                           {getFinalDisplay(game)}
-                        </span>
+                        </div>
                       ) : (
-                        <span>
-                          {game.time || "TBD"}
-                          {game.date ? (
-                            <span className="text-slate-500">
-                              {" "}
-                              • {formatDateMMDDYYYY(game.date)}
-                            </span>
-                          ) : null}
-                        </span>
+                        <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                          {game.status || "Scheduled"}
+                        </div>
                       )}
                     </div>
                   </div>

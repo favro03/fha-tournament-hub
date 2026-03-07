@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { ParticipantRef } from "@/lib/tournament-engine/types";
+import { getPlacementLabel } from "@/lib/bracket-labels";
 
 type Body = {
   poolId?: string;
@@ -68,6 +69,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
         date: "",
         time: "",
         location: "",
+        label: getPlacementLabel({ stageType: "PLACEMENT", engineGameId: `place:${poolId}:1v4`, label: "" }),
       },
       {
         engineGameId: `place:${poolId}:2v3`,
@@ -85,6 +87,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
         date: "",
         time: "",
         location: "",
+        label: getPlacementLabel({ stageType: "PLACEMENT", engineGameId: `place:${poolId}:2v3`, label: "" }),
       },
     ];
 
@@ -114,6 +117,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ bracketId: str
             date: g.date,
             time: g.time,
             location: g.location,
+            label: g.label,
           } as any,
         });
       }
