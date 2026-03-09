@@ -24,6 +24,7 @@ export default function StandingsTable({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
+          <p className="mt-1 text-sm text-slate-600">3 Pts for a shut out win | 2 Pts for a Win | 1 Pt for a Tie</p>
           <p className="mt-1 text-sm text-slate-600">
             Tie-break order: {tiebreakOrder || "Head-to-Head • Goals Allowed • Goals For • Penalty Minutes"}
           </p>

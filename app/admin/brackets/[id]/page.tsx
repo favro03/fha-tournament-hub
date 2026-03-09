@@ -1,54 +1,114 @@
-// app/admin/brackets/[id]/page.tsx
-import { prisma } from "@/lib/prisma";
-import Link from "next/link";
-import BracketFormClient from "./bracket-form-client";
+import { notFound } from "next/navigation";
+import {
+  getPublicBracketView,
+  type PublicBracketView,
+} from "@/lib/queries/publicBracketView";
+import { getBracketStandingsView } from "@/lib/queries/bracketStandings";
+import PoolSchedule from "@/components/public/brackets/PoolSchedule";
+import StandingsTable from "@/components/brackets/StandingsTable";
 
-export default async function AdminBracketEditPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const bracketId = parseInt(id, 10);
+type PublicGame = PublicBracketView["games"][number];
+type DayGroup = { dayKey: string; games: PublicGame[] };
 
-  if (!Number.isFinite(bracketId)) {
-    return (
-      <div className="p-6">
-        Invalid bracket id. params.id = <code>{String(id)}</code>
-      </div>
-    );
+function isTBD(game: PublicGame) {
+  return game.status === "UNSCHEDULED" || !game.date || !game.time;
+}
+
+function sortKey(game: PublicGame) {
+  if (!game.date || !game.time) return Number.POSITIVE_INFINITY;
+  const dt = new Date(`${game.date} ${game.time}`);
+  const ms = dt.getTime();
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+}
+
+function groupGamesByDay(games: PublicGame[]): DayGroup[] {
+  const byDayMap = new Map<string, PublicGame[]>();
+
+  for (const game of games) {
+    const key = game.day || "TBD";
+    const arr = byDayMap.get(key) ?? [];
+    arr.push(game);
+    byDayMap.set(key, arr);
   }
 
-  const bracket = await prisma.bracket.findUnique({
-    where: { id: bracketId },
-    select: {
-      id: true,
-      name: true,
-      youthLevel: true,
-      date: true,
-      image: true,
-      tournamentFormat: true,
-      format: true,
-      engineConfig: true,
-    },
-  });
+  return [...byDayMap.entries()].map(([dayKey, dayGames]) => {
+    const tbd = dayGames.filter(isTBD).sort((a, b) => a.id.localeCompare(b.id));
+    const scheduled = dayGames
+      .filter((g) => !isTBD(g))
+      .sort((a, b) => sortKey(a) - sortKey(b));
 
-  if (!bracket) return <div className="p-6">Bracket not found</div>;
+    return {
+      dayKey,
+      games: [...tbd, ...scheduled],
+    };
+  });
+}
+
+function formatDateMMDDYYYY(dateStr?: string | null) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (!Number.isFinite(d.getTime())) return dateStr;
+
+  return d.toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatBracketDateRange(dateRange: string) {
+  if (!dateRange) return "";
+
+  const parts = dateRange.split(" to ").map((s) => s.trim());
+
+  if (parts.length === 2) {
+    return `${formatDateMMDDYYYY(parts[0])} to ${formatDateMMDDYYYY(parts[1])}`;
+  }
+
+  return formatDateMMDDYYYY(dateRange);
+}
+
+export default async function PublicBracketPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await props.params;
+  const bracketId = Number(id);
+
+  if (!Number.isFinite(bracketId)) return notFound();
+
+  const [view, standings] = await Promise.all([
+    getPublicBracketView(bracketId),
+    getBracketStandingsView(bracketId),
+  ]);
+
+  if (!view) return notFound();
+
+  const poolGames = (view.games ?? []).filter((g) => g.stageType === "POOL_PLAY");
+  const placementGames = (view.games ?? []).filter(
+    (g) => g.stageType === "PLACEMENT"
+  );
+
+  const poolByDay = groupGamesByDay(poolGames);
+  const placementByDay = groupGamesByDay(placementGames);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="h2-bold">Update Bracket</h2>
-
-        <Link
-          href={`/admin/brackets/${bracketId}/schedule`}
-          className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-accent"
-        >
-          Schedule
-        </Link>
+    <div className="mx-auto w-full max-w-6xl px-4 py-6">
+      <div className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">{view.bracket.name}</h1>
+            <p className="text-sm text-slate-600">
+              {view.bracket.youthLevel} • {formatBracketDateRange(view.bracket.date)}
+            </p>
+          </div>
+        </div>
       </div>
 
-      <BracketFormClient initial={bracket} mode="update" />
+      <div className="space-y-6">
+        <StandingsTable standings={standings} title="Pool Standings" />
+        <PoolSchedule title="Pool Play" byDay={poolByDay} />
+        <PoolSchedule title="Placement Games" byDay={placementByDay} />
+      </div>
     </div>
   );
 }

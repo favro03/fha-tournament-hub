@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { getPublicBracketView, type PublicBracketView } from "@/lib/queries/publicBracketView";
+import { getBracketStandingsView } from "@/lib/queries/bracketStandings";
 import PoolSchedule from "@/components/public/brackets/PoolSchedule";
+import StandingsTable from "@/components/brackets/StandingsTable";
+
+export const dynamic = "force-dynamic";
 
 type PublicGame = PublicBracketView["games"][number];
 type DayGroup = { dayKey: string; games: PublicGame[] };
@@ -71,7 +75,11 @@ export default async function PublicBracketPage(props: {
 
   if (!Number.isFinite(bracketId)) return notFound();
 
-  const view = await getPublicBracketView(bracketId);
+  const [view, standings] = await Promise.all([
+    getPublicBracketView(bracketId),
+    getBracketStandingsView(bracketId),
+  ]);
+
   if (!view) return notFound();
 
   const poolGames = (view.games ?? []).filter((g) => g.stageType === "POOL_PLAY");
@@ -94,6 +102,7 @@ export default async function PublicBracketPage(props: {
       </div>
 
       <div className="space-y-6">
+        <StandingsTable standings={standings} title="Pool Standings" />
         <PoolSchedule title="Pool Play" byDay={poolByDay} />
         <PoolSchedule title="Placement Games" byDay={placementByDay} />
       </div>
