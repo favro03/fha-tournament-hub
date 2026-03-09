@@ -43,11 +43,12 @@ export default function StandingsTable({
                   <tr className="border-b">
                     <th className="p-2">Seed</th>
                     <th className="p-2">Team</th>
+                     <th className="p-2">PTS</th>
                     <th className="p-2">GP</th>
                     <th className="p-2">W</th>
                     <th className="p-2">L</th>
                     <th className="p-2">T</th>
-                    <th className="p-2">PTS</th>
+                   
                     <th className="p-2">GA</th>
                     <th className="p-2">GF</th>
                     <th className="p-2">PIM</th>
@@ -58,11 +59,12 @@ export default function StandingsTable({
                     <tr key={`${pool.poolId}-${row.teamId}`} className="border-b last:border-b-0">
                       <td className="p-2 font-semibold text-slate-900">{row.seed}</td>
                       <td className="p-2 font-medium text-slate-900">{row.teamName}</td>
+                       <td className="p-2 font-semibold">{row.pts}</td>
                       <td className="p-2">{row.gp}</td>
                       <td className="p-2">{row.w}</td>
                       <td className="p-2">{row.l}</td>
                       <td className="p-2">{row.t}</td>
-                      <td className="p-2 font-semibold">{row.pts}</td>
+                     
                       <td className="p-2">{row.ga}</td>
                       <td className="p-2">{row.gf}</td>
                       <td className="p-2">{row.pim}</td>
