@@ -42,14 +42,14 @@ export function buildDefaultWeekendWindows(args: {
     {
       dateISO: friISO,
       startTime: "17:15",
-      lastStartTime: "20:00",
+      lastStartTime: "22:00",
       label: "Fri Pool Play",
       allowedStageTypes: ["POOL_PLAY"],
     },
     {
       dateISO: satISO,
       startTime: "08:00",
-      lastStartTime: "20:00",
+      lastStartTime: "22:00",
       label: "Sat Pool Play",
       allowedStageTypes: ["POOL_PLAY"],
     },

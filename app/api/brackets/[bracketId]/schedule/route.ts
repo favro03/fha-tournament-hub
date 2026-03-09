@@ -9,6 +9,11 @@ import {
   scheduleGamesGreedySmart,
 } from "@/lib/tournament-engine/scheduling/scheduleGames";
 import type { ParticipantRef } from "@/lib/tournament-engine/types";
+import {
+  formatISODateInTZ,
+  formatTimeHMInTZ,
+  formatWeekdayShortInTZ,
+} from "@/lib/orchestration/timeFormat";
 
 type Body = {
   slots: Array<{ start: string; location: string; allowedStageTypes?: string[] }>;
@@ -30,16 +35,6 @@ type PreviewScheduledGame = {
   home: { type: string; id?: string; name: string };
   away: { type: string; id?: string; name: string };
 };
-
-function weekdayShort(d: Date) {
-  return d.toLocaleDateString("en-US", { weekday: "short" });
-}
-function dateISO(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-function timeHM(d: Date) {
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-}
 
 function isTeamRef(
   ref: ParticipantRef | null
@@ -175,38 +170,47 @@ function extractStageIdToRestMinutes(engineConfig: any): Record<string, number> 
 }
 
 /**
- * Reorder POOL_PLAY games so we don't feed the scheduler a bunch of Team 1 games first.
- * This dramatically improves early slot fill (like Friday night) without changing engine logic.
+ * Keep pool games in round order first, then smooth within each round so the
+ * scheduler does not break a full Friday round into different days.
  */
-function reorderPoolGamesAvoidBackToBack(games: any[]) {
-  const remaining = [...games];
-  const out: any[] = [];
+function reorderPoolGamesByRound(games: any[]) {
+  const groups = new Map<number, any[]>();
 
-  const teamIdsOf = (g: any) => {
-    const a = g.homeRef?.teamId;
-    const b = g.awayRef?.teamId;
-    return [a, b].filter(Boolean) as string[];
-  };
-
-  let lastTeams = new Set<string>();
-
-  while (remaining.length) {
-    // Prefer a game that doesn't include the last game's teams
-    let idx = remaining.findIndex((g) => {
-      const ids = teamIdsOf(g);
-      return ids.every((id) => !lastTeams.has(id));
-    });
-
-    // If none found, just take the first remaining
-    if (idx === -1) idx = 0;
-
-    const next = remaining.splice(idx, 1)[0];
-    out.push(next);
-
-    lastTeams = new Set(teamIdsOf(next));
+  for (const game of games) {
+    const round = Number.isFinite(Number(game?.round)) ? Number(game.round) : 9999;
+    const list = groups.get(round) ?? [];
+    list.push(game);
+    groups.set(round, list);
   }
 
-  return out;
+  const orderedRounds = [...groups.keys()].sort((a, b) => a - b);
+  const result: any[] = [];
+
+  for (const round of orderedRounds) {
+    const remaining = [...(groups.get(round) ?? [])];
+    let lastTeams = new Set<string>();
+
+    const teamIdsOf = (g: any) => {
+      const a = g.homeRef?.teamId;
+      const b = g.awayRef?.teamId;
+      return [a, b].filter(Boolean) as string[];
+    };
+
+    while (remaining.length) {
+      let idx = remaining.findIndex((g) => {
+        const ids = teamIdsOf(g);
+        return ids.every((id) => !lastTeams.has(id));
+      });
+
+      if (idx === -1) idx = 0;
+
+      const next = remaining.splice(idx, 1)[0];
+      result.push(next);
+      lastTeams = new Set(teamIdsOf(next));
+    }
+  }
+
+  return result;
 }
 
 export async function POST(
@@ -385,6 +389,7 @@ export async function POST(
         status: true,
         stageType: true,
         stageId: true,
+        round: true,
         homeRef: true,
         awayRef: true,
       },
@@ -454,15 +459,16 @@ export async function POST(
         engineGameId: g.engineGameId,
         stageType: g.stageType,
         stageId: g.stageId,
+        round: (g as any).round ?? null,
         homeRef: g.homeRef as ParticipantRef,
         awayRef: g.awayRef as ParticipantRef,
       }));
 
-    // ✅ NEW: reorder POOL_PLAY to avoid feeding repeats early (fills Friday better)
+    // Keep POOL_PLAY games in round order so a full first round can land on Friday.
     if (allowedStageTypes.has("POOL_PLAY")) {
       const pool = schedulable.filter((g: any) => g.stageType === "POOL_PLAY");
       const other = schedulable.filter((g: any) => g.stageType !== "POOL_PLAY");
-      schedulable = [...reorderPoolGamesAvoidBackToBack(pool), ...other];
+      schedulable = [...reorderPoolGamesByRound(pool), ...other];
     }
 
     const schedulableCount = schedulable.length;
@@ -533,12 +539,15 @@ export async function POST(
           if (!slot) continue;
 
           const dt = new Date(slot.start);
+          const day = formatWeekdayShortInTZ(dt);
+          const date = formatISODateInTZ(dt);
+          const time = formatTimeHMInTZ(dt);
 
           const timesRow = await tx.times.create({
             data: {
               bracketId,
-              day: weekdayShort(dt),
-              date: dateISO(dt),
+              day,
+              date,
               timeSlots: slot.start,
               location: slot.location,
               gameType: bracket.format ?? "",
@@ -556,9 +565,9 @@ export async function POST(
             },
             data: {
               timesId: timesRow.id,
-              day: weekdayShort(dt),
-              date: dateISO(dt),
-              time: timeHM(dt),
+              day,
+              date,
+              time,
               location: slot.location,
               status: "SCHEDULED",
             },

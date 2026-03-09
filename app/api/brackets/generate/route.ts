@@ -290,7 +290,7 @@ export async function POST(req: Request) {
       {
         dateISO: friISO,
         startTime: "17:15",
-        lastStartTime: "20:00",
+        lastStartTime: "22:00",
         label: "Fri Pool Play",
         allowedStageTypes: ["POOL_PLAY"],
       },
@@ -298,7 +298,7 @@ export async function POST(req: Request) {
       {
         dateISO: satISO,
         startTime: "08:00",
-        lastStartTime: "20:00",
+        lastStartTime: "22:00",
         label: "Sat Pool Play",
         allowedStageTypes: ["POOL_PLAY"],
       },

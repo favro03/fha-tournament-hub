@@ -278,11 +278,13 @@ export default function AdminGamesTable({
         Changes save automatically. Rows stay in their original display order until refresh.
       </div>
 
-      {sections.map((section) => {
-        const stageGames = section.rowIds
-          .map((rowId) => gamesById[rowId])
-          .filter((game): game is GameRow => Boolean(game));
+        {sections.map((section) => {
+          const stageGames = section.rowIds
+            .map((rowId) => gamesById[rowId])
+            .filter((game): game is GameRow => Boolean(game));
 
+          const showLabelColumn = section.stageType === "PLACEMENT";
+            
         return (
           <div key={section.key} className="space-y-3">
             <h2 className="text-lg font-semibold">{section.dayKey}</h2>
@@ -291,10 +293,10 @@ export default function AdminGamesTable({
               <div className="border-b px-3 py-2 font-medium">{section.stageType}</div>
 
               <div className="overflow-x-auto">
-                <table className="min-w-[1320px] w-full text-sm">
+                <table className="min-w-[1100px] w-full text-sm">
                   <thead className="border-b text-left">
                     <tr>
-                      <th className="p-2">Label</th>
+                      {showLabelColumn && <th className="p-2">Label</th>}
                       <th className="p-2">Date</th>
                       <th className="p-2">Time</th>
                       <th className="p-2">Location</th>
@@ -310,17 +312,17 @@ export default function AdminGamesTable({
                   <tbody>
                     {stageGames.map((g) => (
                       <tr key={g.id} className="border-b align-top">
+                       {showLabelColumn && (
                         <td className="p-2">
-                          <div className="min-w-[150px]">
+                          <div className="min-w-[105px]">
                             {g.displayLabel ? (
                               <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
                                 {g.displayLabel}
                               </span>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
+                            ) : null}
                           </div>
                         </td>
+                      )}
 
                         <td className="p-2">
                           <input
