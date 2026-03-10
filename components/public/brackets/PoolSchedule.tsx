@@ -64,60 +64,60 @@ export default function PoolSchedule({
   byDay: DayGroup[];
 }) {
   return (
-    <div className="rounded-lg border bg-white p-4 shadow-sm">
-      <h2 className="text-lg font-semibold tracking-tight text-slate-900">
-        {title}
-      </h2>
+    <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/75 p-5 text-white shadow-xl backdrop-blur-md">
+      <h2 className="text-xl font-semibold tracking-tight text-white">{title}</h2>
 
       {byDay.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-600">No games scheduled.</p>
+        <p className="mt-3 text-sm text-slate-300">No games scheduled.</p>
       ) : (
-        <div className="mt-4 space-y-6">
+        <div className="mt-5 space-y-6">
           {byDay.map((group) => (
             <div key={group.dayKey}>
-              <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">
                 {group.dayKey}
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {group.games.map((game) => (
                   <div
                     key={game.id}
-                    className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="rounded-2xl border border-emerald-400/12 bg-white/5 p-4 transition-colors hover:border-emerald-400/25 hover:bg-white/7"
                   >
-                    <div className="min-w-0">
-                      {game.label ? (
-                        <div className="mb-1">
-                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                            {game.label}
-                          </span>
-                        </div>
-                      ) : null}
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        {game.label ? (
+                          <div className="mb-2">
+                            <span className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                              {game.label}
+                            </span>
+                          </div>
+                        ) : null}
 
-                      <div className="font-medium text-slate-900">
-                        {game.homeName || "TBD"} vs {game.awayName || "TBD"}
+                        <div className="text-base font-semibold text-white sm:text-lg">
+                          {game.homeName || "TBD"} vs {game.awayName || "TBD"}
+                        </div>
+
+                        <div className="mt-1 text-sm text-slate-300">
+                          {game.location || "TBD Location"}
+                        </div>
                       </div>
 
-                      <div className="text-xs text-slate-600">
-                        {game.location || "TBD Location"}
-                      </div>
-                    </div>
-
-                    <div className="text-sm text-slate-700 sm:text-right">
-                      <div>
-                        {game.date ? formatDateMMDDYYYY(game.date) : "TBD Date"}
-                        {game.time ? ` • ${game.time}` : ""}
-                      </div>
-
-                      {hasFinalScore(game) ? (
-                        <div className="mt-1 font-semibold text-slate-900">
-                          {getFinalDisplay(game)}
+                      <div className="text-sm text-slate-200 lg:text-right">
+                        <div className="font-medium text-white">
+                          {game.date ? formatDateMMDDYYYY(game.date) : "TBD Date"}
+                          {game.time ? ` • ${game.time}` : ""}
                         </div>
-                      ) : (
-                        <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                          {game.status || "Scheduled"}
-                        </div>
-                      )}
+
+                        {hasFinalScore(game) ? (
+                          <div className="mt-1 font-semibold text-emerald-300">
+                            {getFinalDisplay(game)}
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                            {game.status || "Scheduled"}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
