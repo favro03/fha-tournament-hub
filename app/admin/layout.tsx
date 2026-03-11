@@ -13,8 +13,8 @@ export default function AdminLayout({
   return (
     <>
       <div className='flex min-h-screen flex-col bg-[#0b1a12] text-white'>
-        <div className='border-b border-emerald-900/50 bg-[#102317] container mx-auto'>
-          <div className='flex items-center h-16 px-4'>
+        <div className='container mx-auto border-b border-emerald-900/50 bg-[#102317]'>
+          <div className='flex h-16 items-center px-4'>
             <Link href='/' className='w-22'>
               <Image
                 src='/images/logo.png'
@@ -23,17 +23,15 @@ export default function AdminLayout({
                 alt={APP_NAME}
               />
             </Link>
-
             <MainNav className='mx-6' />
-
-            <div className='ml-auto items-center flex space-x-4'>
+            <div className='ml-auto flex items-center space-x-4'>
               {/* <AdminSearch /> */}
               <Menu />
             </div>
           </div>
         </div>
 
-        <div className='flex-1 space-y-4 p-8 pt-6 container mx-auto bg-[#0b1a12]'>
+        <div className='container mx-auto flex-1 space-y-4 bg-[#0b1a12] p-8 pt-6'>
           {children}
         </div>
       </div>

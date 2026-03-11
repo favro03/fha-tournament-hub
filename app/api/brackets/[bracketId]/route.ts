@@ -1,9 +1,8 @@
-// app/api/brackets/[bracketId]/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(
-  _req: Request,
+export async function POST(
+  req: Request,
   ctx: { params: Promise<{ bracketId: string }> }
 ) {
   try {
@@ -17,50 +16,46 @@ export async function GET(
       );
     }
 
-    const bracket = await prisma.bracket.findUnique({
-      where: { id: bracketId },
-      select: {
-        id: true,
-        name: true,
-        youthLevel: true,
-        standingsRules: true,
-        createdAt: true,
-        updatedAt: true,
-        games: {
-          orderBy: [{ stageType: "asc" }, { stageId: "asc" }, { engineGameId: "asc" }],
-          select: {
-            engineGameId: true,
-            stageType: true,
-            stageId: true,
-            round: true,
-            status: true,
-            homeTeam: true,
-            awayTeam: true,
-            homeRef: true,
-            awayRef: true,
-            result: true,
+    const body = await req.json();
+    const { name, youthLevel, side, date, image, tournamentFormat } = body as {
+      name?: string;
+      youthLevel?: string;
+      side?: "HOME" | "AWAY";
+      date?: string;
+      image?: string;
+      tournamentFormat?: string;
+    };
 
-            // Optional legacy fields (only if they exist in your schema)
-            // Prisma will ignore these unless present - but since select
-            // must match schema exactly, we CANNOT include unknown fields.
-            //
-            // If you want additional fields later, we can add them once we
-            // confirm the schema.
-          },
-        },
-      },
-    });
-
-    if (!bracket) {
+    if (!name || !youthLevel || !date || !side) {
       return NextResponse.json(
-        { ok: false, error: "Bracket not found" },
-        { status: 404 }
+        { ok: false, error: "name, youthLevel, side, and date are required" },
+        { status: 400 }
       );
     }
 
-    return NextResponse.json({ ok: true, bracket });
+    if (side !== "HOME" && side !== "AWAY") {
+      return NextResponse.json(
+        { ok: false, error: "side must be HOME or AWAY" },
+        { status: 400 }
+      );
+    }
+
+    const updated = await prisma.bracket.update({
+      where: { id: bracketId },
+      data: {
+        name,
+        youthLevel,
+        side,
+        date,
+        image: image ?? "",
+        tournamentFormat: tournamentFormat ?? undefined,
+      },
+      select: { id: true },
+    });
+
+    return NextResponse.json({ ok: true, bracketId: updated.id });
   } catch (err: any) {
-    console.error("GET BRACKET ERROR:", err);
+    console.error("UPDATE BRACKET ERROR:", err);
     return NextResponse.json(
       { ok: false, error: err?.message ?? "Internal Server Error" },
       { status: 500 }

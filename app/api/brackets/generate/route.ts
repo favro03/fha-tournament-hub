@@ -1,4 +1,3 @@
-// app/api/brackets/generate/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generatePlan } from "@/lib/tournament-engine/generatePlan";
@@ -47,16 +46,32 @@ export async function POST(req: Request) {
   const {
     name,
     youthLevel,
+    side,
     date,
     teams,
     config,
   }: {
     name: string;
     youthLevel: string;
+    side: "HOME" | "AWAY";
     date: string;
     teams: TeamInput[];
     config: GeneratorConfig;
   } = body;
+
+  if (!name || !youthLevel || !date || !side) {
+    return NextResponse.json(
+      { ok: false, error: "name, youthLevel, side, date, teams, and config are required" },
+      { status: 400 }
+    );
+  }
+
+  if (side !== "HOME" && side !== "AWAY") {
+    return NextResponse.json(
+      { ok: false, error: "side must be HOME or AWAY" },
+      { status: 400 }
+    );
+  }
 
   if (!Array.isArray(teams) || teams.length < 2) {
     return NextResponse.json(
@@ -93,7 +108,6 @@ export async function POST(req: Request) {
   const stageTypeCounts = countStageTypes(plan.games ?? []);
   const teamsById = new Map(teams.map((t) => [t.id, t.name]));
 
-  // Persist stageIdLevels into engineConfig
   const inferredStageIdLevels: Record<string, string> = {};
   for (const g of plan.games ?? []) {
     if (!g?.stageId) continue;
@@ -120,6 +134,7 @@ export async function POST(req: Request) {
       data: {
         name,
         youthLevel,
+        side,
         date,
         image: "",
         bracketName: "",
@@ -174,10 +189,6 @@ export async function POST(req: Request) {
     return bracket;
   });
 
-  // ------------------------------
-  // Phase 1: Auto-schedule on create
-  // ------------------------------
-
   const normalizedLevel = String(youthLevel ?? "").trim().toUpperCase();
 
   const rule =
@@ -191,13 +202,11 @@ export async function POST(req: Request) {
 
   const { friISO, satISO, sunISO } = parseTournamentWeekendDates(date);
 
-  // Default windows (Sun is split: AM Pool, PM Placement)
   let dayWindows = buildDefaultWeekendWindows({ friISO, satISO, sunISO });
 
   const locations = determineRinkLocations(normalizedLevel);
   let slots = generateSlotsMultiDay({ dayWindows, intervalMinutes, locations });
 
-  // Persist schedule defaults in engineConfig (initial)
   await prisma.bracket.update({
     where: { id: created.id },
     data: {
@@ -216,7 +225,6 @@ export async function POST(req: Request) {
 
   const origin = new URL(req.url).origin;
 
-  // --- POOL_PLAY scheduling (2 pass) ---
   const poolOnlySlots = filterSlotsByAllowedStage(slots as any[], "POOL_PLAY");
 
   const scheduleResA = await fetch(
@@ -280,13 +288,10 @@ export async function POST(req: Request) {
     };
   }
 
-  // ✅ NEW: If NO Sunday AM pool play is needed, move placement earlier (Sun 8:00–16:00)
-  // This ONLY changes the slot windows for PLACEMENT placeholders.
   let placementSlotsToUse = slots;
 
   if (finalUnscheduledCount === 0) {
     dayWindows = [
-      // Fri Pool
       {
         dateISO: friISO,
         startTime: "17:15",
@@ -294,7 +299,6 @@ export async function POST(req: Request) {
         label: "Fri Pool Play",
         allowedStageTypes: ["POOL_PLAY"],
       },
-      // Sat Pool
       {
         dateISO: satISO,
         startTime: "08:00",
@@ -302,7 +306,6 @@ export async function POST(req: Request) {
         label: "Sat Pool Play",
         allowedStageTypes: ["POOL_PLAY"],
       },
-      // Sun Placement only, early start
       {
         dateISO: sunISO,
         startTime: "08:00",
@@ -318,7 +321,6 @@ export async function POST(req: Request) {
       locations,
     });
 
-    // Update persisted defaults so regen matches reality
     await prisma.bracket.update({
       where: { id: created.id },
       data: {
@@ -336,7 +338,6 @@ export async function POST(req: Request) {
     });
   }
 
-  // --- PLACEMENT placeholders ---
   const placementScheduled = await applyPlacementPlaceholderSchedule({
     bracketId: created.id,
     slots: placementSlotsToUse as any,
@@ -351,6 +352,7 @@ export async function POST(req: Request) {
     bracketId: created.id,
     format: plan.format,
     savedYouthLevel: youthLevel,
+    savedSide: side,
     sampleStageIds,
     savedEngineConfigStageIdLevels: engineConfigToSave.stageIdLevels ?? {},
     debugPlan: {

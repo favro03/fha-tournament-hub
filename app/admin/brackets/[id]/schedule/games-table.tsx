@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 type GameRow = {
   id: number;
@@ -23,7 +23,7 @@ type GameRow = {
   displayLabel?: string;
 };
 
-type SaveState = "saved" | "unsaved" | "saving" | "error";
+type SaveState = 'saved' | 'unsaved' | 'saving' | 'error';
 
 type Section = {
   key: string;
@@ -35,14 +35,14 @@ type Section = {
 type GamePatch = Partial<
   Pick<
     GameRow,
-    | "date"
-    | "time"
-    | "location"
-    | "homeScore"
-    | "awayScore"
-    | "homePenalty"
-    | "awayPenalty"
-    | "status"
+    | 'date'
+    | 'time'
+    | 'location'
+    | 'homeScore'
+    | 'awayScore'
+    | 'homePenalty'
+    | 'awayPenalty'
+    | 'status'
   >
 >;
 
@@ -57,20 +57,20 @@ type SaveResponse = {
   error?: string;
 };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 function buildDayLabel(dateISO: string) {
-  if (!dateISO || !/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return "TBD";
+  if (!dateISO || !/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return 'TBD';
 
-  const [y, m, d] = dateISO.split("-").map(Number);
+  const [y, m, d] = dateISO.split('-').map(Number);
   const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-  const weekday = WEEKDAYS[dt.getDay()] ?? "";
+  const weekday = WEEKDAYS[dt.getDay()] ?? '';
 
   return `${dateISO} ${weekday}`.trim();
 }
 
 function normalizeNumber(value: string) {
-  if (value.trim() === "") return 0;
+  if (value.trim() === '') return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -80,7 +80,7 @@ function buildSections(initialGames: GameRow[]): Section[] {
   const sectionMap = new Map<string, Section>();
 
   for (const game of initialGames) {
-    const dateKey = game.date || "TBD";
+    const dateKey = game.date || 'TBD';
     const dayKey = buildDayLabel(game.date);
     const key = `${dateKey}__${game.stageType}`;
     const existing = sectionMap.get(key);
@@ -104,30 +104,43 @@ function buildSections(initialGames: GameRow[]): Section[] {
   return sections;
 }
 
+function stageLabel(stageType: string) {
+  if (stageType === 'POOL_PLAY') return 'Pool Play';
+  if (stageType === 'PLACEMENT') return 'Placement';
+  if (stageType === 'JAMBOREE') return 'Jamboree';
+  return stageType;
+}
+
 function SaveBadge({ state }: { state: SaveState }) {
   const label =
-    state === "unsaved"
-      ? "Unsaved"
-      : state === "saving"
-        ? "Saving..."
-        : state === "error"
-          ? "Error saving"
-          : "Saved";
+    state === 'unsaved'
+      ? 'Unsaved'
+      : state === 'saving'
+        ? 'Saving...'
+        : state === 'error'
+          ? 'Error'
+          : 'Saved';
 
   return (
     <span
       className={cn(
-        "inline-flex min-w-[108px] items-center justify-center rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap",
-        state === "saved" && "border-green-200 bg-green-50 text-green-700",
-        state === "unsaved" && "border-amber-200 bg-amber-50 text-amber-700",
-        state === "saving" && "border-blue-200 bg-blue-50 text-blue-700",
-        state === "error" && "border-red-200 bg-red-50 text-red-700"
+        'inline-flex min-w-[108px] items-center justify-center rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap',
+        state === 'saved' && 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200',
+        state === 'unsaved' && 'border-amber-400/30 bg-amber-400/10 text-amber-200',
+        state === 'saving' && 'border-sky-400/30 bg-sky-400/10 text-sky-200',
+        state === 'error' && 'border-red-400/30 bg-red-400/10 text-red-200'
       )}
     >
       {label}
     </span>
   );
 }
+
+const inputClassName =
+  'h-10 rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20';
+
+const smallNumberClassName =
+  'h-10 w-[76px] rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20';
 
 export default function AdminGamesTable({
   bracketId,
@@ -143,7 +156,7 @@ export default function AdminGamesTable({
   );
 
   const [saveStateById, setSaveStateById] = useState<Record<number, SaveState>>(
-    () => Object.fromEntries(initialGames.map((game) => [game.id, "saved"]))
+    () => Object.fromEntries(initialGames.map((game) => [game.id, 'saved']))
   );
 
   const sections = useMemo(() => buildSections(initialGames), [initialGames]);
@@ -171,13 +184,13 @@ export default function AdminGamesTable({
   const updateGame = useCallback(
     async (gameId: number, patch: GamePatch): Promise<SaveResponse> => {
       const res = await fetch(`/api/game-by-id/${gameId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bracketId, patch }),
       });
 
       const json = (await res.json()) as SaveResponse;
-      if (!json.ok) throw new Error(json.error ?? "Update failed");
+      if (!json.ok) throw new Error(json.error ?? 'Update failed');
       return json;
     },
     [bracketId]
@@ -196,7 +209,7 @@ export default function AdminGamesTable({
       const currentRow = gamesByIdRef.current[gameId];
       if (!currentRow) return;
 
-      setSaveStateById((prev) => ({ ...prev, [gameId]: "saving" }));
+      setSaveStateById((prev) => ({ ...prev, [gameId]: 'saving' }));
 
       try {
         const response = await updateGame(gameId, {
@@ -218,7 +231,7 @@ export default function AdminGamesTable({
               ...(response.game ?? {}),
             },
           }));
-          setSaveStateById((prev) => ({ ...prev, [gameId]: "saved" }));
+          setSaveStateById((prev) => ({ ...prev, [gameId]: 'saved' }));
         }
 
         const shouldRefresh =
@@ -229,7 +242,7 @@ export default function AdminGamesTable({
         }
       } catch {
         if ((saveVersionRef.current[gameId] ?? 0) === version) {
-          setSaveStateById((prev) => ({ ...prev, [gameId]: "error" }));
+          setSaveStateById((prev) => ({ ...prev, [gameId]: 'error' }));
         }
       }
     },
@@ -266,102 +279,138 @@ export default function AdminGamesTable({
         };
       });
 
-      setSaveStateById((prev) => ({ ...prev, [gameId]: "unsaved" }));
+      setSaveStateById((prev) => ({ ...prev, [gameId]: 'unsaved' }));
       scheduleSave(gameId);
     },
     [scheduleSave]
   );
 
   return (
-    <div className="space-y-6">
-      <div className="text-sm text-muted-foreground">
-        Changes save automatically. Rows stay in their original display order until refresh.
+    <div className='space-y-6'>
+      <div className='rounded-xl border border-emerald-900/50 bg-[#102317] p-4 text-sm text-white/65'>
+        Changes save automatically. Rows stay in their current display order until
+        refresh.
       </div>
 
-        {sections.map((section) => {
-          const stageGames = section.rowIds
-            .map((rowId) => gamesById[rowId])
-            .filter((game): game is GameRow => Boolean(game));
+      {sections.map((section) => {
+        const stageGames = section.rowIds
+          .map((rowId) => gamesById[rowId])
+          .filter((game): game is GameRow => Boolean(game));
 
-          const showLabelColumn = section.stageType === "PLACEMENT";
-            
+        const showLabelColumn = section.stageType === 'PLACEMENT';
+
         return (
-          <div key={section.key} className="space-y-3">
-            <h2 className="text-lg font-semibold">{section.dayKey}</h2>
+          <div key={section.key} className='space-y-3'>
+            <h2 className='text-2xl font-semibold text-white'>{section.dayKey}</h2>
 
-            <div className="rounded border">
-              <div className="border-b px-3 py-2 font-medium">{section.stageType}</div>
+            <div className='overflow-hidden rounded-xl border border-emerald-900/50 bg-[#102317]'>
+              <div className='border-b border-emerald-900/50 bg-emerald-950/30 px-4 py-3'>
+                <div className='text-lg font-semibold text-white'>
+                  {stageLabel(section.stageType)}
+                </div>
+              </div>
 
-              <div className="overflow-x-auto">
-                <table className="min-w-[1100px] w-full text-sm">
-                  <thead className="border-b text-left">
+              <div className='overflow-x-auto'>
+                <table className='min-w-[1180px] w-full text-sm text-white'>
+                  <thead className='border-b border-emerald-900/50 bg-emerald-950/20 text-left'>
                     <tr>
-                      {showLabelColumn && <th className="p-2">Label</th>}
-                      <th className="p-2">Date</th>
-                      <th className="p-2">Time</th>
-                      <th className="p-2">Location</th>
-                      <th className="p-2">Home</th>
-                      <th className="p-2">Away</th>
-                      <th className="p-2">Score</th>
-                      <th className="p-2">PIM</th>
-                      <th className="p-2">Status</th>
-                      <th className="p-2 text-right">Save</th>
+                      {showLabelColumn && (
+                        <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                          Label
+                        </th>
+                      )}
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Date
+                      </th>
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Time
+                      </th>
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Location
+                      </th>
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Home
+                      </th>
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Away
+                      </th>
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Score
+                      </th>
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        PIM
+                      </th>
+                      <th className='p-3 text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Status
+                      </th>
+                      <th className='p-3 text-right text-xs font-semibold uppercase tracking-wide text-emerald-200'>
+                        Save
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {stageGames.map((g) => (
-                      <tr key={g.id} className="border-b align-top">
-                       {showLabelColumn && (
-                        <td className="p-2">
-                          <div className="min-w-[105px]">
-                            {g.displayLabel ? (
-                              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-                                {g.displayLabel}
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                      )}
+                      <tr
+                        key={g.id}
+                        className='border-b border-emerald-900/40 align-top transition-colors hover:bg-emerald-900/20'
+                      >
+                        {showLabelColumn && (
+                          <td className='p-3'>
+                            <div className='min-w-[120px]'>
+                              {g.displayLabel ? (
+                                <span className='inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90'>
+                                  {g.displayLabel}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                        )}
 
-                        <td className="p-2">
+                        <td className='p-3'>
                           <input
-                            className="w-[140px] rounded border px-2 py-1"
-                            type="date"
-                            value={g.date ?? ""}
+                            className={`${inputClassName} w-[148px]`}
+                            type='date'
+                            value={g.date ?? ''}
                             onChange={(e) => onChange(g.id, { date: e.target.value })}
                           />
                         </td>
 
-                        <td className="p-2">
+                        <td className='p-3'>
                           <input
-                            className="w-[120px] rounded border px-2 py-1"
-                            value={g.time ?? ""}
+                            className={`${inputClassName} w-[132px]`}
+                            value={g.time ?? ''}
                             onChange={(e) => onChange(g.id, { time: e.target.value })}
                           />
                         </td>
 
-                        <td className="p-2">
+                        <td className='p-3'>
                           <input
-                            className="w-[140px] rounded border px-2 py-1"
-                            value={g.location ?? ""}
-                            onChange={(e) => onChange(g.id, { location: e.target.value })}
+                            className={`${inputClassName} w-[148px]`}
+                            value={g.location ?? ''}
+                            onChange={(e) =>
+                              onChange(g.id, { location: e.target.value })
+                            }
                           />
                         </td>
 
-                        <td className="p-2">
-                          <div className="font-medium">{g.homeTeam}</div>
+                        <td className='p-3'>
+                          <div className='min-w-[110px] font-medium text-white'>
+                            {g.homeTeam}
+                          </div>
                         </td>
 
-                        <td className="p-2">
-                          <div className="font-medium">{g.awayTeam}</div>
+                        <td className='p-3'>
+                          <div className='min-w-[110px] font-medium text-white'>
+                            {g.awayTeam}
+                          </div>
                         </td>
 
-                        <td className="p-2">
-                          <div className="flex items-center gap-2">
+                        <td className='p-3'>
+                          <div className='flex items-center gap-2'>
                             <input
-                              className="w-[60px] rounded border px-2 py-1"
-                              type="number"
+                              className={smallNumberClassName}
+                              type='number'
                               value={g.homeScore ?? 0}
                               onChange={(e) =>
                                 onChange(g.id, {
@@ -369,10 +418,10 @@ export default function AdminGamesTable({
                                 })
                               }
                             />
-                            <span>-</span>
+                            <span className='text-white/60'>-</span>
                             <input
-                              className="w-[60px] rounded border px-2 py-1"
-                              type="number"
+                              className={smallNumberClassName}
+                              type='number'
                               value={g.awayScore ?? 0}
                               onChange={(e) =>
                                 onChange(g.id, {
@@ -383,11 +432,11 @@ export default function AdminGamesTable({
                           </div>
                         </td>
 
-                        <td className="p-2">
-                          <div className="flex items-center gap-2">
+                        <td className='p-3'>
+                          <div className='flex items-center gap-2'>
                             <input
-                              className="w-[60px] rounded border px-2 py-1"
-                              type="number"
+                              className={smallNumberClassName}
+                              type='number'
                               value={g.homePenalty ?? 0}
                               onChange={(e) =>
                                 onChange(g.id, {
@@ -395,10 +444,10 @@ export default function AdminGamesTable({
                                 })
                               }
                             />
-                            <span>-</span>
+                            <span className='text-white/60'>-</span>
                             <input
-                              className="w-[60px] rounded border px-2 py-1"
-                              type="number"
+                              className={smallNumberClassName}
+                              type='number'
                               value={g.awayPenalty ?? 0}
                               onChange={(e) =>
                                 onChange(g.id, {
@@ -409,20 +458,22 @@ export default function AdminGamesTable({
                           </div>
                         </td>
 
-                        <td className="p-2">
+                        <td className='p-3'>
                           <select
-                            className="rounded border px-2 py-1"
+                            className={`${inputClassName} w-[180px]`}
                             value={g.status}
-                            onChange={(e) => onChange(g.id, { status: e.target.value })}
+                            onChange={(e) =>
+                              onChange(g.id, { status: e.target.value })
+                            }
                           >
-                            <option value="UNSCHEDULED">UNSCHEDULED</option>
-                            <option value="SCHEDULED">SCHEDULED</option>
-                            <option value="FINAL">FINAL</option>
+                            <option value='UNSCHEDULED'>UNSCHEDULED</option>
+                            <option value='SCHEDULED'>SCHEDULED</option>
+                            <option value='FINAL'>FINAL</option>
                           </select>
                         </td>
 
-                        <td className="p-2 text-right">
-                          <SaveBadge state={saveStateById[g.id] ?? "saved"} />
+                        <td className='p-3 text-right'>
+                          <SaveBadge state={saveStateById[g.id] ?? 'saved'} />
                         </td>
                       </tr>
                     ))}

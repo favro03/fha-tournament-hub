@@ -4,16 +4,24 @@ import { prisma } from "@/lib/prisma";
 export async function POST(req: Request) {
   const body = await req.json();
 
-  const { name, youthLevel, date, image } = body as {
+  const { name, youthLevel, side, date, image } = body as {
     name: string;
     youthLevel: string;
+    side: "HOME" | "AWAY";
     date: string;
     image: string;
   };
 
-  if (!name || !youthLevel || !date) {
+  if (!name || !youthLevel || !date || !side) {
     return NextResponse.json(
-      { ok: false, error: "name, youthLevel, and date are required" },
+      { ok: false, error: "name, youthLevel, side, and date are required" },
+      { status: 400 }
+    );
+  }
+
+  if (side !== "HOME" && side !== "AWAY") {
+    return NextResponse.json(
+      { ok: false, error: "side must be HOME or AWAY" },
       { status: 400 }
     );
   }
@@ -29,6 +37,7 @@ export async function POST(req: Request) {
     data: {
       name,
       youthLevel,
+      side,
       date,
       image,
       bracketName: "",

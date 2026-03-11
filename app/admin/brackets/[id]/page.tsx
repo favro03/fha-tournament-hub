@@ -1,114 +1,47 @@
-import { notFound } from "next/navigation";
-import {
-  getPublicBracketView,
-  type PublicBracketView,
-} from "@/lib/queries/publicBracketView";
-import { getBracketStandingsView } from "@/lib/queries/bracketStandings";
-import PoolSchedule from "@/components/public/brackets/PoolSchedule";
-import StandingsTable from "@/components/brackets/StandingsTable";
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { getBracketById } from '@/lib/actions/brackets.actions';
+import BracketFormClient from './bracket-form-client';
 
-type PublicGame = PublicBracketView["games"][number];
-type DayGroup = { dayKey: string; games: PublicGame[] };
+export const metadata: Metadata = {
+  title: 'Update Bracket',
+};
 
-function isTBD(game: PublicGame) {
-  return game.status === "UNSCHEDULED" || !game.date || !game.time;
-}
-
-function sortKey(game: PublicGame) {
-  if (!game.date || !game.time) return Number.POSITIVE_INFINITY;
-  const dt = new Date(`${game.date} ${game.time}`);
-  const ms = dt.getTime();
-  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
-}
-
-function groupGamesByDay(games: PublicGame[]): DayGroup[] {
-  const byDayMap = new Map<string, PublicGame[]>();
-
-  for (const game of games) {
-    const key = game.day || "TBD";
-    const arr = byDayMap.get(key) ?? [];
-    arr.push(game);
-    byDayMap.set(key, arr);
-  }
-
-  return [...byDayMap.entries()].map(([dayKey, dayGames]) => {
-    const tbd = dayGames.filter(isTBD).sort((a, b) => a.id.localeCompare(b.id));
-    const scheduled = dayGames
-      .filter((g) => !isTBD(g))
-      .sort((a, b) => sortKey(a) - sortKey(b));
-
-    return {
-      dayKey,
-      games: [...tbd, ...scheduled],
-    };
-  });
-}
-
-function formatDateMMDDYYYY(dateStr?: string | null) {
-  if (!dateStr) return "";
-  const d = new Date(`${dateStr}T00:00:00`);
-  if (!Number.isFinite(d.getTime())) return dateStr;
-
-  return d.toLocaleDateString("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-  });
-}
-
-function formatBracketDateRange(dateRange: string) {
-  if (!dateRange) return "";
-
-  const parts = dateRange.split(" to ").map((s) => s.trim());
-
-  if (parts.length === 2) {
-    return `${formatDateMMDDYYYY(parts[0])} to ${formatDateMMDDYYYY(parts[1])}`;
-  }
-
-  return formatDateMMDDYYYY(dateRange);
-}
-
-export default async function PublicBracketPage(props: {
-  params: Promise<{ id: string }>;
-}) {
+const AdminBracketUpdatePage = async (props: {
+  params: Promise<{
+    id: string;
+  }>;
+}) => {
   const { id } = await props.params;
-  const bracketId = Number(id);
 
-  if (!Number.isFinite(bracketId)) return notFound();
+  const bracket = await getBracketById(id);
 
-  const [view, standings] = await Promise.all([
-    getPublicBracketView(bracketId),
-    getBracketStandingsView(bracketId),
-  ]);
-
-  if (!view) return notFound();
-
-  const poolGames = (view.games ?? []).filter((g) => g.stageType === "POOL_PLAY");
-  const placementGames = (view.games ?? []).filter(
-    (g) => g.stageType === "PLACEMENT"
-  );
-
-  const poolByDay = groupGamesByDay(poolGames);
-  const placementByDay = groupGamesByDay(placementGames);
+  if (!bracket) return notFound();
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6">
-      <div className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-1">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{view.bracket.name}</h1>
-            <p className="text-sm text-slate-600">
-              {view.bracket.youthLevel} • {formatBracketDateRange(view.bracket.date)}
-            </p>
-          </div>
-        </div>
+    <div className='mx-auto max-w-6xl space-y-6'>
+      <div>
+        <h1 className='text-3xl font-bold text-white'>Update Bracket</h1>
+        <p className='mt-1 text-sm text-white/65'>
+          Edit bracket details, upload mode, or build configuration.
+        </p>
       </div>
 
-      <div className="space-y-6">
-        <StandingsTable standings={standings} title="Pool Standings" />
-        <PoolSchedule title="Pool Play" byDay={poolByDay} />
-        <PoolSchedule title="Placement Games" byDay={placementByDay} />
+      <div className='rounded-xl border border-emerald-900/50 bg-[#102317] p-6'>
+        <BracketFormClient
+          mode='update'
+          initial={{
+            id: bracket.id,
+            name: bracket.name,
+            youthLevel: bracket.youthLevel,
+            date: bracket.date,
+            image: bracket.image,
+            tournamentFormat: bracket.tournamentFormat,
+          }}
+        />
       </div>
     </div>
   );
-}
+};
+
+export default AdminBracketUpdatePage;

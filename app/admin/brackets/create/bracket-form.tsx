@@ -36,6 +36,11 @@ const BUILD_OPTIONS = [
   { value: "JAMBOREE", label: "Jamboree" },
 ] as const;
 
+const BRACKET_SIDES = [
+  { value: "HOME", label: "Home" },
+  { value: "AWAY", label: "Away" },
+] as const;
+
 type BracketFormMode = "create" | "update";
 
 function makeBracketFormSchema(mode: BracketFormMode) {
@@ -43,6 +48,9 @@ function makeBracketFormSchema(mode: BracketFormMode) {
     .object({
       name: z.string().min(1, "Name is required"),
       youthLevel: z.string().min(1, "Division is required"),
+      side: z.enum(["HOME", "AWAY"], {
+        required_error: "Home / Away is required",
+      }),
 
       startDate: z.string().min(1, "Start date is required"),
       endDate: z.string().optional(),
@@ -53,16 +61,12 @@ function makeBracketFormSchema(mode: BracketFormMode) {
 
       image: z.string().optional(),
 
-      stageType: z.string().optional(), // POOL_BRACKET | JAMBOREE
-      seeding: z.string().optional(), // comma list of team names
+      stageType: z.string().optional(),
+      seeding: z.string().optional(),
 
-      // ✅ NEW: Guaranteed pool games per team (create + pool bracket only)
-      guaranteedGamesPerTeam: z
-        .union([z.string(), z.number()])
-        .optional(),
+      guaranteedGamesPerTeam: z.union([z.string(), z.number()]).optional(),
     })
     .superRefine((val, ctx) => {
-      // UPLOAD always requires an image
       if (val.bracketSource === "UPLOAD") {
         if (!val.image || val.image.trim().length === 0) {
           ctx.addIssue({
@@ -73,7 +77,6 @@ function makeBracketFormSchema(mode: BracketFormMode) {
         }
       }
 
-      // BUILD always requires a build option
       if (val.bracketSource === "BUILD") {
         if (!val.stageType || val.stageType.trim().length === 0) {
           ctx.addIssue({
@@ -83,7 +86,6 @@ function makeBracketFormSchema(mode: BracketFormMode) {
           });
         }
 
-        // Only require team seeding on CREATE.
         if (mode === "create") {
           const seeding = (val.seeding ?? "").trim();
           const teams = seeding.length
@@ -92,6 +94,7 @@ function makeBracketFormSchema(mode: BracketFormMode) {
                 .map((s) => s.trim())
                 .filter(Boolean)
             : [];
+
           if (teams.length < 2) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -100,7 +103,6 @@ function makeBracketFormSchema(mode: BracketFormMode) {
             });
           }
 
-          // ✅ If Pool+Bracket, require guaranteed games per team
           if (val.stageType === "POOL_BRACKET") {
             const gRaw = val.guaranteedGamesPerTeam;
             const g =
@@ -135,7 +137,8 @@ export type BracketFormInitial = {
   youthLevel?: string | null;
   date?: string | null;
   image?: string | null;
-  tournamentFormat?: string | null; // "JAMBOREE" | "POOL_PLACEMENT" | "IMAGE_UPLOAD"
+  tournamentFormat?: string | null;
+  side?: "HOME" | "AWAY" | null;
 };
 
 function makeDateRange(start?: string, end?: string) {
@@ -175,6 +178,12 @@ function parseTeamNamesFromSeeding(seeding?: string) {
     .filter(Boolean);
 }
 
+const selectClassName =
+  "block h-11 w-full rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-2 text-sm text-white shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20";
+
+const toggleBaseClass =
+  "rounded-md border px-3 py-2 text-sm font-medium transition-colors";
+
 export default function BracketForm({
   mode = "create",
   initial,
@@ -191,17 +200,17 @@ export default function BracketForm({
     defaultValues: {
       name: "",
       youthLevel: "",
+      side: "HOME",
       startDate: "",
       endDate: "",
       bracketSource: "BUILD",
       image: "",
       stageType: "",
       seeding: "",
-      guaranteedGamesPerTeam: "3", // ✅ default for typical “4-game guarantee” w/ placement
+      guaranteedGamesPerTeam: "3",
     },
   });
 
-  // Hydrate for edit mode (populate fields)
   useEffect(() => {
     if (!initial) return;
 
@@ -212,6 +221,7 @@ export default function BracketForm({
     form.reset({
       name: initial.name ?? "",
       youthLevel: initial.youthLevel ?? "",
+      side: initial.side === "AWAY" ? "AWAY" : "HOME",
       startDate: startDate ?? "",
       endDate: endDate ?? "",
       bracketSource: bracketSource as "UPLOAD" | "BUILD",
@@ -226,6 +236,7 @@ export default function BracketForm({
   const images = form.watch("image");
   const stageType = form.watch("stageType");
   const seedingWatch = form.watch("seeding");
+
   const teamCount = useMemo(
     () => parseTeamNamesFromSeeding(seedingWatch).length,
     [seedingWatch]
@@ -240,13 +251,13 @@ export default function BracketForm({
     try {
       const date = makeDateRange(values.startDate, values.endDate);
 
-      // UPDATE MODE
       if (mode === "update") {
         if (!initial?.id) throw new Error("Missing bracket id for update");
 
         const payload = {
           name: values.name,
           youthLevel: values.youthLevel,
+          side: values.side,
           date,
           image: values.bracketSource === "UPLOAD" ? values.image : "",
           tournamentFormat:
@@ -273,11 +284,11 @@ export default function BracketForm({
         return;
       }
 
-      // CREATE MODE
       if (values.bracketSource === "UPLOAD") {
         const payload = {
           name: values.name,
           youthLevel: values.youthLevel,
+          side: values.side,
           date,
           image: values.image,
         };
@@ -298,7 +309,6 @@ export default function BracketForm({
         return;
       }
 
-      // BUILD path -> /api/brackets/generate
       const teamNames = parseTeamNamesFromSeeding(values.seeding);
       const teams = teamNames.map((name, idx) => ({
         id: `t${idx + 1}`,
@@ -315,7 +325,11 @@ export default function BracketForm({
 
       const placementGames =
         nTeams >= 6
-          ? [{ type: "CHAMPIONSHIP" }, { type: "THIRD_PLACE" }, { type: "FIFTH_PLACE" }]
+          ? [
+              { type: "CHAMPIONSHIP" },
+              { type: "THIRD_PLACE" },
+              { type: "FIFTH_PLACE" },
+            ]
           : nTeams >= 4
             ? [{ type: "CHAMPIONSHIP" }, { type: "THIRD_PLACE" }]
             : [{ type: "CHAMPIONSHIP" }];
@@ -325,15 +339,16 @@ export default function BracketForm({
           ? ({ type: "JAMBOREE" } as any)
           : ({
               type: "ROUND_ROBIN",
-              // ✅ This is the “guaranteed games” control
-              // 6 teams + gamesPerTeam=3 => 9 pool games + 3 placement games
-              gamesPerTeam: Number.isFinite(gamesPerTeam) ? gamesPerTeam : undefined,
+              gamesPerTeam: Number.isFinite(gamesPerTeam)
+                ? gamesPerTeam
+                : undefined,
               placementGames,
             } as any);
 
       const payload = {
         name: values.name,
         youthLevel: values.youthLevel,
+        side: values.side,
         date,
         teams,
         config,
@@ -361,15 +376,14 @@ export default function BracketForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        {/* Basics */}
-        <div className="flex flex-col gap-5 md:flex-row md:items-start">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 text-white">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
           <FormField
             control={form.control}
             name="name"
             render={({ field }) => (
-              <FormItem className="w-full">
-                <FormLabel>Tournament / Bracket Name</FormLabel>
+              <FormItem className="w-full md:col-span-2">
+                <FormLabel className="text-white">Tournament / Bracket Name</FormLabel>
                 <FormControl>
                   <Input
                     placeholder="Enter tournament name"
@@ -387,16 +401,20 @@ export default function BracketForm({
             name="youthLevel"
             render={({ field }) => (
               <FormItem className="w-full">
-                <FormLabel>Division</FormLabel>
+                <FormLabel className="text-white">Division</FormLabel>
                 <FormControl>
                   <select
                     {...field}
                     value={field.value ?? ""}
-                    className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none"
+                    className={selectClassName}
                   >
                     <option value="">Select division</option>
                     {YOUTH_LEVELS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        className="bg-[#102317] text-white"
+                      >
                         {opt.label}
                       </option>
                     ))}
@@ -408,14 +426,41 @@ export default function BracketForm({
           />
         </div>
 
-        {/* Dates */}
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          <FormField
+            control={form.control}
+            name="side"
+            render={({ field }) => (
+              <FormItem className="w-full">
+                <FormLabel className="text-white">Tournament Side</FormLabel>
+                <FormControl>
+                  <select
+                    {...field}
+                    value={field.value ?? "HOME"}
+                    className={selectClassName}
+                  >
+                    {BRACKET_SIDES.map((opt) => (
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        className="bg-[#102317] text-white"
+                      >
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
           <FormField
             control={form.control}
             name="startDate"
             render={({ field }) => (
               <FormItem className="w-full">
-                <FormLabel>Start Date</FormLabel>
+                <FormLabel className="text-white">Start Date</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} value={field.value ?? ""} />
                 </FormControl>
@@ -423,12 +468,13 @@ export default function BracketForm({
               </FormItem>
             )}
           />
+
           <FormField
             control={form.control}
             name="endDate"
             render={({ field }) => (
               <FormItem className="w-full">
-                <FormLabel>End Date (optional)</FormLabel>
+                <FormLabel className="text-white">End Date (optional)</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} value={field.value ?? ""} />
                 </FormControl>
@@ -438,23 +484,22 @@ export default function BracketForm({
           />
         </div>
 
-        {/* Bracket Source */}
         <FormField
           control={form.control}
           name="bracketSource"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Bracket Option</FormLabel>
+              <FormLabel className="text-white">Bracket Option</FormLabel>
               <FormControl>
                 <div className="flex flex-col gap-2 md:flex-row">
                   <button
                     type="button"
                     onClick={() => field.onChange("BUILD")}
                     className={[
-                      "rounded-md border px-3 py-2 text-sm",
+                      toggleBaseClass,
                       field.value === "BUILD"
-                        ? "border-primary bg-primary/10"
-                        : "border-input bg-background",
+                        ? "border-emerald-400/60 bg-emerald-500/20 text-white"
+                        : "border-emerald-900/70 bg-[#0f2217] text-white/80 hover:bg-emerald-950/50",
                     ].join(" ")}
                   >
                     Build with Engine
@@ -463,10 +508,10 @@ export default function BracketForm({
                     type="button"
                     onClick={() => field.onChange("UPLOAD")}
                     className={[
-                      "rounded-md border px-3 py-2 text-sm",
+                      toggleBaseClass,
                       field.value === "UPLOAD"
-                        ? "border-primary bg-primary/10"
-                        : "border-input bg-background",
+                        ? "border-emerald-400/60 bg-emerald-500/20 text-white"
+                        : "border-emerald-900/70 bg-[#0f2217] text-white/80 hover:bg-emerald-950/50",
                     ].join(" ")}
                   >
                     Upload Bracket Image
@@ -478,7 +523,6 @@ export default function BracketForm({
           )}
         />
 
-        {/* UPLOAD PATH */}
         {bracketSource === "UPLOAD" && (
           <div className="upload-field flex flex-col gap-5 md:flex-row">
             <FormField
@@ -486,15 +530,15 @@ export default function BracketForm({
               name="image"
               render={() => (
                 <FormItem className="w-full">
-                  <FormLabel>Bracket Image</FormLabel>
+                  <FormLabel className="text-white">Bracket Image</FormLabel>
                   <Card>
-                    <CardContent className="space-y-2 mt-2 min-h-48">
+                    <CardContent className="mt-2 min-h-48 space-y-2">
                       <div className="flex-start space-x-2">
                         {images && images.length > 0 && (
                           <Image
                             src={images}
                             alt="bracket image"
-                            className="w-20 h-20 object-cover object-center rounded-sm"
+                            className="h-20 w-20 rounded-sm object-cover object-center"
                             width={100}
                             height={100}
                           />
@@ -513,7 +557,7 @@ export default function BracketForm({
                           />
                         </FormControl>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-white/60">
                         Upload an image if you don’t want to build a bracket with the engine.
                       </p>
                     </CardContent>
@@ -525,7 +569,6 @@ export default function BracketForm({
           </div>
         )}
 
-        {/* BUILD PATH */}
         {bracketSource === "BUILD" && (
           <>
             <FormField
@@ -533,16 +576,20 @@ export default function BracketForm({
               name="stageType"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Build Option</FormLabel>
+                  <FormLabel className="text-white">Build Option</FormLabel>
                   <FormControl>
                     <select
                       {...field}
                       value={field.value ?? ""}
-                      className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none"
+                      className={selectClassName}
                     >
                       <option value="">Select</option>
                       {BUILD_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
+                        <option
+                          key={opt.value}
+                          value={opt.value}
+                          className="bg-[#102317] text-white"
+                        >
                           {opt.label}
                         </option>
                       ))}
@@ -553,68 +600,84 @@ export default function BracketForm({
               )}
             />
 
-            {/* Teams only matter when generating a new bracket. */}
             {mode === "create" && stageType && stageType.length > 0 && (
               <div className="mb-6 space-y-3">
-                <FormLabel>Teams</FormLabel>
+                <FormLabel className="text-white">Teams</FormLabel>
 
                 <div className="flex items-center gap-2">
-                  <label htmlFor="numTeams" className="text-sm">
+                  <label htmlFor="numTeams" className="text-sm text-white/85">
                     Total Teams:
                   </label>
                   <select
                     id="numTeams"
-                    className="border rounded px-2 py-1 text-sm"
+                    className="h-10 rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
                     value={teamCount}
                     onChange={(e) => {
                       const num = parseInt(e.target.value, 10);
-                      const newTeams = Array.from({ length: num }, (_, i) => `Team ${i + 1}`);
+                      const newTeams = Array.from(
+                        { length: num },
+                        (_, i) => `Team ${i + 1}`
+                      );
                       form.setValue("seeding", newTeams.join(","), {
                         shouldValidate: true,
                       });
 
-                      // If they lowered team count, clamp guaranteed games per team
-                      const currentG = Number(String(form.getValues("guaranteedGamesPerTeam") ?? "3"));
+                      const currentG = Number(
+                        String(form.getValues("guaranteedGamesPerTeam") ?? "3")
+                      );
                       const maxG = Math.max(1, num - 1);
                       if (Number.isFinite(currentG) && currentG > maxG) {
-                        form.setValue("guaranteedGamesPerTeam", String(maxG), { shouldValidate: true });
+                        form.setValue("guaranteedGamesPerTeam", String(maxG), {
+                          shouldValidate: true,
+                        });
                       }
                     }}
                   >
                     <option value={0}>Select</option>
                     {[...Array(16)].map((_, i) => (
-                      <option key={i + 1} value={i + 1}>
+                      <option
+                        key={i + 1}
+                        value={i + 1}
+                        className="bg-[#102317] text-white"
+                      >
                         {i + 1}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                {/* ✅ NEW FIELD: Guaranteed pool games per team */}
                 {stageType === "POOL_BRACKET" && teamCount >= 2 && (
                   <FormField
                     control={form.control}
                     name="guaranteedGamesPerTeam"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Guaranteed pool games per team</FormLabel>
+                        <FormLabel className="text-white">
+                          Guaranteed pool games per team
+                        </FormLabel>
                         <FormControl>
                           <select
                             {...field}
                             value={String(field.value ?? "3")}
-                            className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none"
+                            className={selectClassName}
                           >
-                            {Array.from({ length: Math.max(1, teamCount - 1) }, (_, i) => i + 1).map(
-                              (n) => (
-                                <option key={n} value={n}>
-                                  {n}
-                                </option>
-                              )
-                            )}
+                            {Array.from(
+                              { length: Math.max(1, teamCount - 1) },
+                              (_, i) => i + 1
+                            ).map((n) => (
+                              <option
+                                key={n}
+                                value={n}
+                                className="bg-[#102317] text-white"
+                              >
+                                {n}
+                              </option>
+                            ))}
                           </select>
                         </FormControl>
-                        <div className="text-xs text-muted-foreground">
-                          Example: 6 teams + 3 pool games per team = 9 pool games total, then placement.
+                        <div className="text-xs text-white/60">
+                          Example: 6 teams + 3 pool games per team = 9 pool games
+                          total, then placement.
                         </div>
                         <FormMessage />
                       </FormItem>
@@ -625,7 +688,8 @@ export default function BracketForm({
                 {(() => {
                   const seeding = form.watch("seeding") || "";
                   const teams = seeding ? seeding.split(",") : [];
-                  if (!teams.length || (teams.length === 1 && teams[0] === "")) return null;
+                  if (!teams.length || (teams.length === 1 && teams[0] === ""))
+                    return null;
 
                   return (
                     <div className="flex flex-col gap-2">
@@ -647,16 +711,17 @@ export default function BracketForm({
                   );
                 })()}
 
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-white/60">
                   Select total teams. You can edit names now or later.
                 </p>
               </div>
             )}
 
             {mode === "update" && (
-              <p className="text-xs text-muted-foreground">
-                Teams and generated games are not edited here. Use the Teams/Bracket tools
-                (or a future “Regenerate” action) if you need to rebuild structure.
+              <p className="text-xs text-white/60">
+                Teams and generated games are not edited here. Use the Teams/Bracket
+                tools (or a future “Regenerate” action) if you need to rebuild
+                structure.
               </p>
             )}
           </>
