@@ -47,6 +47,11 @@ function formatDateRange(dateValue: string) {
   return start === end ? startLabel : `${startLabel} - ${endLabel}`;
 }
 
+function formatBracketSide(side?: string | null) {
+  if (!side) return '';
+  return side.charAt(0).toUpperCase() + side.slice(1).toLowerCase();
+}
+
 const AdminOverviewPage = async () => {
   const session = await auth();
 
@@ -154,9 +159,7 @@ const AdminOverviewPage = async () => {
           <div className='mb-4 flex items-center justify-between'>
             <div>
               <h2 className='text-xl font-semibold text-white'>Upcoming Tournaments</h2>
-              <p className='text-sm text-white/60'>
-                Next brackets on the schedule.
-              </p>
+              <p className='text-sm text-white/60'>Next brackets on the schedule.</p>
             </div>
             <Button asChild variant='ghost'>
               <Link href='/admin/brackets'>View all</Link>
@@ -173,7 +176,10 @@ const AdminOverviewPage = async () => {
                   <div>
                     <p className='font-semibold text-white'>{bracket.name}</p>
                     <p className='text-sm text-white/65'>
-                      {bracket.youthLevel} • {formatDateRange(bracket.date)}
+                      {bracket.youthLevel}
+                      {bracket.side ? ` • ${formatBracketSide(bracket.side)}` : ''}
+                      {' • '}
+                      {formatDateRange(bracket.date)}
                     </p>
                   </div>
                   <div className='flex gap-2'>
@@ -223,7 +229,10 @@ const AdminOverviewPage = async () => {
                   >
                     <p className='font-medium text-white'>{bracket.name}</p>
                     <p className='text-sm text-white/60'>
-                      {bracket.youthLevel} • {formatDateRange(bracket.date)}
+                      {bracket.youthLevel}
+                      {bracket.side ? ` • ${formatBracketSide(bracket.side)}` : ''}
+                      {' • '}
+                      {formatDateRange(bracket.date)}
                     </p>
                   </div>
                 ))

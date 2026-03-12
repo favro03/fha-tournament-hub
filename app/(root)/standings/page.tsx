@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Trophy, CalendarDays } from "lucide-react";
 import StandingsTable from "@/components/brackets/StandingsTable";
 import { getBracketStandingsView } from "@/lib/queries/bracketStandings";
@@ -6,6 +7,8 @@ import {
   getCurrentTournament,
   getNextTournament,
 } from "@/lib/queries/currentTournament";
+import { prisma } from "@/lib/prisma";
+import { parseDateRange } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +36,71 @@ function formatBracketDateRange(dateRange: string) {
   return formatDateMMDDYYYY(dateRange);
 }
 
+function dateOnly(dateStr: string, endOfDay = false) {
+  const time = endOfDay ? "T23:59:59.999" : "T00:00:00.000";
+  const d = new Date(`${dateStr}${time}`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function getBracketBounds(dateRange: string) {
+  const { startDate, endDate } = parseDateRange(dateRange);
+  const start = startDate ? dateOnly(startDate, false) : null;
+  const end = endDate
+    ? dateOnly(endDate, true)
+    : startDate
+      ? dateOnly(startDate, true)
+      : null;
+
+  return { start, end };
+}
+
+function isImageBasedBracket(bracket: {
+  image?: string | null;
+  tournamentFormat?: string | null;
+}) {
+  const image = String(bracket.image ?? "").trim();
+  const tournamentFormat = String(bracket.tournamentFormat ?? "").trim();
+
+  return tournamentFormat === "IMAGE_UPLOAD" || image.length > 0;
+}
+
+async function hasCurrentOrUpcomingImageBasedHomeBracket() {
+  const now = new Date();
+
+  const brackets = await prisma.bracket.findMany({
+    where: {
+      side: "HOME",
+    },
+    select: {
+      id: true,
+      date: true,
+      image: true,
+      tournamentFormat: true,
+    },
+    orderBy: [{ date: "asc" }, { name: "asc" }],
+  });
+
+  return brackets.some((bracket) => {
+    if (!isImageBasedBracket(bracket)) return false;
+
+    const { start, end } = getBracketBounds(bracket.date);
+    if (!start) return false;
+
+    if (end && now >= start && now <= end) return true;
+    return start >= now;
+  });
+}
+
 export default async function CurrentStandingsPage() {
   const currentTournament = await getCurrentTournament();
 
   if (!currentTournament) {
+    const hasImageBasedBracket = await hasCurrentOrUpcomingImageBasedHomeBracket();
+
+    if (hasImageBasedBracket) {
+      redirect("/brackets");
+    }
+
     const nextTournament = await getNextTournament();
 
     return (
@@ -88,8 +152,12 @@ export default async function CurrentStandingsPage() {
 
   const standings = await getBracketStandingsView(currentTournament.id);
 
+  if (!standings) {
+    redirect("/brackets");
+  }
+
   return (
-   <div className="min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]">
+    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]">
       <div className="min-h-screen bg-slate-950/70">
         <div className="mx-auto max-w-6xl px-4 py-10">
           <div className="mb-6 rounded-[28px] border border-white/15 bg-slate-950/75 p-6 text-white shadow-2xl backdrop-blur-md">

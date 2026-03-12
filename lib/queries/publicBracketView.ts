@@ -25,6 +25,8 @@ export type PublicBracketView = {
     youthLevel: string;
     date: string;
     tournamentFormat: string;
+    image: string;
+    isImageBased: boolean;
   };
   games: PublicGame[];
 };
@@ -37,6 +39,16 @@ function safeNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function isImageBasedBracket(bracket: {
+  tournamentFormat?: unknown;
+  image?: unknown;
+}) {
+  const tournamentFormat = safeString(bracket.tournamentFormat).trim();
+  const image = safeString(bracket.image).trim();
+
+  return tournamentFormat === "IMAGE_UPLOAD" || image.length > 0;
+}
+
 export async function getPublicBracketView(bracketId: number): Promise<PublicBracketView | null> {
   const bracket = (await prisma.bracket.findUnique({
     where: { id: bracketId },
@@ -46,6 +58,7 @@ export async function getPublicBracketView(bracketId: number): Promise<PublicBra
       youthLevel: true,
       date: true,
       tournamentFormat: true,
+      image: true,
       games: {
         orderBy: [
           { stageType: "asc" },
@@ -83,6 +96,8 @@ export async function getPublicBracketView(bracketId: number): Promise<PublicBra
       youthLevel: bracket.youthLevel,
       date: bracket.date,
       tournamentFormat: bracket.tournamentFormat,
+      image: safeString(bracket.image),
+      isImageBased: isImageBasedBracket(bracket),
     },
     games: (bracket.games as any[]).map((game: any) => {
       const homeName = safeString(game.homeTeam) || "TBD";

@@ -110,12 +110,7 @@ export default async function PublicBracketsPage(props: {
                           <span>{b.youthLevel}</span>
                           <span className="text-emerald-300/70">•</span>
                           <span>{b.date}</span>
-                          {b.image?.trim() ? (
-                            <>
-                              <span className="text-emerald-300/70">•</span>
-                              <span className="text-emerald-200">Custom Image</span>
-                            </>
-                          ) : null}
+                          
                         </div>
                       </div>
 

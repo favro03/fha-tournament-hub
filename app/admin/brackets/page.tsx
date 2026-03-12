@@ -44,7 +44,9 @@ const AdminBracketsPage = async () => {
             <TableHead>Name</TableHead>
             <TableHead>Division</TableHead>
             <TableHead>Date</TableHead>
+            <TableHead >Home/Away</TableHead>
             <TableHead className='text-right'>Actions</TableHead>
+       
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -54,6 +56,7 @@ const AdminBracketsPage = async () => {
                 <TableCell className='font-medium text-white'>{bracket.name}</TableCell>
                 <TableCell>{bracket.youthLevel}</TableCell>
                 <TableCell>{bracket.date}</TableCell>
+                  <TableCell>{bracket.side}</TableCell>
                 <TableCell className='text-right'>
                   <div className='flex justify-end gap-2'>
                     <Button asChild variant='outline' size='sm'>

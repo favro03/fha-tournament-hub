@@ -1,5 +1,6 @@
+import Image from "next/image";
 import { notFound } from "next/navigation";
-import { Trophy, CalendarDays } from "lucide-react";
+import { Trophy, CalendarDays, ImageIcon } from "lucide-react";
 import {
   getPublicBracketView,
   type PublicBracketView,
@@ -79,17 +80,20 @@ export default async function PublicBracketPage(props: {
 
   if (!Number.isFinite(bracketId)) return notFound();
 
-  const [view, standings] = await Promise.all([
-    getPublicBracketView(bracketId),
-    getBracketStandingsView(bracketId),
-  ]);
+  const view = await getPublicBracketView(bracketId);
 
   if (!view) return notFound();
 
-  const poolGames = (view.games ?? []).filter((g) => g.stageType === "POOL_PLAY");
-  const placementGames = (view.games ?? []).filter(
-    (g) => g.stageType === "PLACEMENT"
-  );
+  const isImageBased = view.bracket.isImageBased;
+
+  const standings = isImageBased ? null : await getBracketStandingsView(bracketId);
+
+  const poolGames = isImageBased
+    ? []
+    : (view.games ?? []).filter((g) => g.stageType === "POOL_PLAY");
+  const placementGames = isImageBased
+    ? []
+    : (view.games ?? []).filter((g) => g.stageType === "PLACEMENT");
 
   const poolByDay = groupGamesByDay(poolGames);
   const placementByDay = groupGamesByDay(placementGames);
@@ -124,24 +128,52 @@ export default async function PublicBracketPage(props: {
                       <CalendarDays className="h-4 w-4 text-emerald-300" />
                       {formatBracketDateRange(view.bracket.date)}
                     </span>
+                 
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-6">
-              <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
-                <StandingsTable standings={standings} title="Pool Standings" />
-              </div>
+            {isImageBased ? (
+              <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md lg:p-6">
+                <div className="mb-4 flex flex-wrap items-center gap-3 text-white">
+                 
+                </div>
 
-              <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
-                <PoolSchedule title="Pool Play" byDay={poolByDay} />
+                {view.bracket.image ? (
+                  <div className="overflow-hidden rounded-[24px] border border-emerald-400/15 bg-white/5">
+                    <div className="relative aspect-[4/5] w-full bg-slate-950/40 sm:aspect-[16/14] lg:aspect-[16/12]">
+                      <Image
+                        src={view.bracket.image}
+                        alt={`${view.bracket.name} bracket image`}
+                        fill
+                        className="object-contain"
+                        sizes="(max-width: 1024px) 100vw, 1200px"
+                        priority
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-emerald-400/20 bg-white/5 p-8 text-sm text-slate-300">
+                    No bracket image is available yet.
+                  </div>
+                )}
               </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
+                  <StandingsTable standings={standings} title="Pool Standings" />
+                </div>
 
-              <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
-                <PoolSchedule title="Placement Games" byDay={placementByDay} />
+                <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
+                  <PoolSchedule title="Pool Play" byDay={poolByDay} />
+                </div>
+
+                <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
+                  <PoolSchedule title="Placement Games" byDay={placementByDay} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

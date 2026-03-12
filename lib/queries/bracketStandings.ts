@@ -100,12 +100,25 @@ function formatPoolName(poolId: string) {
   return raw.replace(/\b([a-z])/g, (m) => m.toUpperCase());
 }
 
+function isImageBasedBracket(bracket: {
+  tournamentFormat?: unknown;
+  image?: unknown;
+}) {
+  const tournamentFormat =
+    typeof bracket.tournamentFormat === "string" ? bracket.tournamentFormat.trim() : "";
+  const image = typeof bracket.image === "string" ? bracket.image.trim() : "";
+
+  return tournamentFormat === "IMAGE_UPLOAD" || image.length > 0;
+}
+
 export async function getBracketStandingsView(
   bracketId: number
 ): Promise<BracketStandingsView | null> {
   const bracket = (await prisma.bracket.findUnique({
     where: { id: bracketId },
     select: {
+      tournamentFormat: true,
+      image: true,
       standingsRules: true,
       games: {
         select: {
@@ -129,8 +142,10 @@ export async function getBracketStandingsView(
   })) as any;
 
   if (!bracket) return null;
+  if (isImageBasedBracket(bracket)) return null;
 
-  const rules = ((bracket.standingsRules ?? null) as StandingsRules | null) ?? defaultStandingsRules();
+  const rules =
+    ((bracket.standingsRules ?? null) as StandingsRules | null) ?? defaultStandingsRules();
   const engineGames = toEngineGames(bracket.games);
 
   const teamNameById = new Map<string, string>();
@@ -148,25 +163,29 @@ export async function getBracketStandingsView(
     }
   }
 
-  const poolIds = [...new Set(
-    (bracket.games as any[])
-      .filter((g: any) => g.stageType === "POOL_PLAY" && String(g.stageId ?? "").trim())
-      .map((g: any) => String(g.stageId).trim())
-  )].sort() as string[];
+  const poolIds = [
+    ...new Set(
+      (bracket.games as any[])
+        .filter((g: any) => g.stageType === "POOL_PLAY" && String(g.stageId ?? "").trim())
+        .map((g: any) => String(g.stageId).trim())
+    ),
+  ].sort() as string[];
 
   const pools: PoolStandingsView[] = poolIds.map((poolId: string) => {
-    const teamIds = [...new Set(
-      (bracket.games as any[])
-        .filter((g: any) => g.stageType === "POOL_PLAY" && g.stageId === poolId)
-        .flatMap((g: any) => {
-          const ids: string[] = [];
-          const homeRef = (g.homeRef ?? null) as ParticipantRef | null;
-          const awayRef = (g.awayRef ?? null) as ParticipantRef | null;
-          if (isTeamRef(homeRef)) ids.push(homeRef.teamId);
-          if (isTeamRef(awayRef)) ids.push(awayRef.teamId);
-          return ids;
-        })
-    )].sort();
+    const teamIds = [
+      ...new Set(
+        (bracket.games as any[])
+          .filter((g: any) => g.stageType === "POOL_PLAY" && g.stageId === poolId)
+          .flatMap((g: any) => {
+            const ids: string[] = [];
+            const homeRef = (g.homeRef ?? null) as ParticipantRef | null;
+            const awayRef = (g.awayRef ?? null) as ParticipantRef | null;
+            if (isTeamRef(homeRef)) ids.push(homeRef.teamId);
+            if (isTeamRef(awayRef)) ids.push(awayRef.teamId);
+            return ids;
+          })
+      ),
+    ].sort();
 
     const teams: TeamInput[] = teamIds.map((teamId: string) => ({
       id: teamId,
