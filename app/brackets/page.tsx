@@ -31,7 +31,7 @@ export default async function PublicBracketsPage(props: {
     <div className="min-h-screen bg-[url('/images/rinkWlights.png')] bg-cover bg-center bg-fixed">
       <div className="min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]">
         <div className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-6 lg:py-10">
-          <div className="rounded-[32px] border border-emerald-400/20 bg-slate-950/45 p-5 shadow-2xl backdrop-blur-sm lg:p-8">
+          <div className="rounded-[32px] border border-emerald-400/20 bg-[#264331]/30 p-5 shadow-2xl backdrop-blur-sm lg:p-8">
             <div className="mb-8 flex flex-col gap-4 lg:mb-10 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <div className="mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-400/20">

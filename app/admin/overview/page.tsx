@@ -103,7 +103,7 @@ const AdminOverviewPage = async () => {
         </div>
 
         <div className='flex flex-wrap gap-2'>
-          <Button asChild>
+          <Button asChild variant='outline'>
             <Link href='/admin/brackets/create'>Create Bracket</Link>
           </Button>
           <Button asChild variant='outline'>
@@ -168,7 +168,7 @@ const AdminOverviewPage = async () => {
               upcoming.slice(0, 6).map((bracket) => (
                 <div
                   key={bracket.id}
-                  className='flex flex-col gap-3 rounded-lg border border-emerald-900/40 bg-emerald-950/30 p-4 md:flex-row md:items-center md:justify-between'
+                  className='flex flex-col gap-3 rounded-lg border border-emerald-900/40 bg-[#2e5c3f] p-4 md:flex-row md:items-center md:justify-between'
                 >
                   <div>
                     <p className='font-semibold text-white'>{bracket.name}</p>
@@ -189,7 +189,7 @@ const AdminOverviewPage = async () => {
                 </div>
               ))
             ) : (
-              <div className='rounded-lg border border-dashed border-emerald-900/50 bg-emerald-950/20 p-4 text-sm text-white/65'>
+              <div className='rounded-lg border border-dashed border-emerald-900/50 bg-[#2e5c3f] p-4 text-sm text-white/65'>
                 No upcoming tournaments found.
               </div>
             )}
@@ -219,7 +219,7 @@ const AdminOverviewPage = async () => {
                 recentBrackets.map((bracket) => (
                   <div
                     key={bracket.id}
-                    className='rounded-lg border border-emerald-900/40 bg-emerald-950/30 p-3'
+                    className='rounded-lg border border-emerald-900/40 bg-[#2e5c3f] p-3'
                   >
                     <p className='font-medium text-white'>{bracket.name}</p>
                     <p className='text-sm text-white/60'>

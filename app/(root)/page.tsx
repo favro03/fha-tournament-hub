@@ -61,9 +61,9 @@ export default function Homepage() {
         <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6 lg:py-8">
           <HomepageTicker />
 
-          <div className="mt-6 rounded-[32px] border border-emerald-400/20 bg-slate-950/50 p-5 shadow-2xl backdrop-blur-sm lg:p-8">
+          <div className="mt-6 rounded-[32px] border border-emerald-400/20 bg-[rgba(6,29,22,0.52)] p-5 shadow-2xl backdrop-blur-sm lg:p-8">
             <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-             <div>
+              <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
                   FHA Tournament Hub
                 </div>

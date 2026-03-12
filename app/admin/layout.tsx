@@ -31,7 +31,7 @@ export default function AdminLayout({
           </div>
         </div>
 
-        <div className='container mx-auto flex-1 space-y-4 bg-[#0b1a12] p-8 pt-6'>
+        <div className='container mx-auto flex-1 space-y-4 bg-[#3a6a4f]/50 p-8 pt-6'>
           {children}
         </div>
       </div>

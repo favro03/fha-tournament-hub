@@ -89,7 +89,7 @@ export default async function CurrentStandingsPage() {
   const standings = await getBracketStandingsView(currentTournament.id);
 
   return (
-    <div className="min-h-screen bg-[url('/images/rinkWlights.png')] bg-cover bg-center bg-fixed">
+   <div className="min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]">
       <div className="min-h-screen bg-slate-950/70">
         <div className="mx-auto max-w-6xl px-4 py-10">
           <div className="mb-6 rounded-[28px] border border-white/15 bg-slate-950/75 p-6 text-white shadow-2xl backdrop-blur-md">
