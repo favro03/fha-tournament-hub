@@ -9,6 +9,13 @@ import TeamNamesEditor from './team-names-editor';
 
 export const dynamic = 'force-dynamic';
 
+type EngineConfigStage = {
+  stageId?: string;
+  levelToken?: string;
+  gamesPerTeam?: number;
+  teamIds?: string[];
+};
+
 function weekdayFromISODate(dateStr?: string | null) {
   if (!dateStr) return '';
   const d = new Date(`${dateStr}T00:00:00`);
@@ -38,6 +45,118 @@ function firstNonEmpty(...values: Array<string | null | undefined>) {
   return '';
 }
 
+function normalizeToken(raw?: string | null) {
+  return String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_')
+    .replace(/-+/g, '_');
+}
+
+function humanizeMiteLevel(raw?: string | null) {
+  const token = normalizeToken(raw);
+
+  if (token === 'MINI_MITE') return 'Mini Mite';
+  if (token === 'MITE1') return 'Mite 1';
+  if (token === 'MITE2') return 'Mite 2';
+  if (token === 'MITE3') return 'Mite 3';
+
+  return raw ? String(raw) : 'Jamboree';
+}
+
+function levelFromStageId(stageId?: string | null) {
+  const value = String(stageId ?? '').trim();
+  if (!value) return '';
+
+  const parts = value.split(':');
+  const last = parts[parts.length - 1] ?? '';
+  return normalizeToken(last);
+}
+
+function buildGroupedTeams(args: {
+  teams: Array<{ id: number; teamName: string }>;
+  engineConfig: any;
+  tournamentFormat?: string | null;
+}) {
+  const { teams, engineConfig, tournamentFormat } = args;
+
+  if (tournamentFormat !== 'JAMBOREE') {
+    return [
+      {
+        key: 'all-teams',
+        title: 'Teams',
+        teams: teams.map((team, index) => ({
+          id: team.id,
+          label: `Team ${index + 1}`,
+          teamName: team.teamName,
+        })),
+      },
+    ];
+  }
+
+  const stages = Array.isArray(engineConfig?.stages)
+    ? (engineConfig.stages as EngineConfigStage[])
+    : [];
+
+  if (stages.length === 0) {
+    return [
+      {
+        key: 'all-teams',
+        title: 'Teams',
+        teams: teams.map((team, index) => ({
+          id: team.id,
+          label: `Team ${index + 1}`,
+          teamName: team.teamName,
+        })),
+      },
+    ];
+  }
+
+  const grouped: Array<{
+    key: string;
+    title: string;
+    teams: Array<{ id: number; label: string; teamName: string }>;
+  }> = [];
+
+  let offset = 0;
+
+  for (const stage of stages) {
+    const teamCount = Array.isArray(stage.teamIds) ? stage.teamIds.length : 0;
+    if (teamCount <= 0) continue;
+
+    const slice = teams.slice(offset, offset + teamCount);
+    offset += teamCount;
+
+    const levelTitle = humanizeMiteLevel(stage.levelToken || levelFromStageId(stage.stageId));
+
+    grouped.push({
+      key: stage.stageId ?? levelTitle,
+      title: levelTitle,
+      teams: slice.map((team, index) => ({
+        id: team.id,
+        label: `${levelTitle} Team ${index + 1}`,
+        teamName: team.teamName,
+      })),
+    });
+  }
+
+  if (grouped.length === 0) {
+    return [
+      {
+        key: 'all-teams',
+        title: 'Teams',
+        teams: teams.map((team, index) => ({
+          id: team.id,
+          label: `Team ${index + 1}`,
+          teamName: team.teamName,
+        })),
+      },
+    ];
+  }
+
+  return grouped;
+}
+
 export default async function AdminBracketSchedulePage({
   params,
 }: {
@@ -49,7 +168,14 @@ export default async function AdminBracketSchedulePage({
   const [bracket, standings, teams] = await Promise.all([
     prisma.bracket.findUnique({
       where: { id: bracketId },
-      select: { id: true, name: true, youthLevel: true, date: true },
+      select: {
+        id: true,
+        name: true,
+        youthLevel: true,
+        date: true,
+        tournamentFormat: true,
+        engineConfig: true,
+      },
     }),
     getBracketStandingsView(bracketId),
     prisma.team.findMany({
@@ -68,7 +194,7 @@ export default async function AdminBracketSchedulePage({
 
   const unscheduled = await prisma.game.findMany({
     where: { bracketId, timesId: null },
-    orderBy: [{ stageType: 'asc' }, { engineGameId: 'asc' }],
+    orderBy: [{ stageType: 'asc' }, { stageId: 'asc' }, { engineGameId: 'asc' }],
     include: {
       times: { select: { timeSlots: true, location: true, date: true, day: true } },
     },
@@ -79,6 +205,7 @@ export default async function AdminBracketSchedulePage({
     orderBy: [
       { times: { timeSlots: 'asc' } },
       { stageType: 'asc' },
+      { stageId: 'asc' },
       { engineGameId: 'asc' },
     ],
     include: {
@@ -134,6 +261,14 @@ export default async function AdminBracketSchedulePage({
     orderBy: [{ engineGameId: 'asc' }],
   });
 
+  const groupedTeams = buildGroupedTeams({
+    teams,
+    engineConfig: bracket.engineConfig,
+    tournamentFormat: bracket.tournamentFormat,
+  });
+
+  const isJamboree = bracket.tournamentFormat === 'JAMBOREE';
+
   return (
     <div className='space-y-6 text-white'>
       <div className='flex flex-col gap-4 md:flex-row md:items-start md:justify-between'>
@@ -151,22 +286,15 @@ export default async function AdminBracketSchedulePage({
           >
             Public View
           </Link>
-          <ResolvePlacementButton bracketId={bracketId} />
+          {!isJamboree ? <ResolvePlacementButton bracketId={bracketId} /> : null}
         </div>
       </div>
 
-      {teams.length > 0 && (
-        <TeamNamesEditor
-          bracketId={bracketId}
-          teams={teams.map((team, index) => ({
-            id: team.id,
-            label: `Team ${index + 1}`,
-            teamName: team.teamName,
-          }))}
-        />
+      {groupedTeams.length > 0 && (
+        <TeamNamesEditor bracketId={bracketId} groups={groupedTeams} />
       )}
 
-      {unscheduledPool.length > 0 && (
+      {!isJamboree && unscheduledPool.length > 0 && (
         <div className='rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100'>
           <div className='font-semibold'>
             {unscheduledPool.length} Pool Play game(s) could not be scheduled
@@ -189,9 +317,11 @@ export default async function AdminBracketSchedulePage({
         </div>
       )}
 
-      <div className='rounded-xl border border-emerald-900/50 bg-[#102317] p-5'>
-        <StandingsTable standings={standings} title='Pool Standings' />
-      </div>
+      {!isJamboree ? (
+        <div className='rounded-xl border border-emerald-900/50 bg-[#102317] p-5'>
+          <StandingsTable standings={standings} title='Pool Standings' />
+        </div>
+      ) : null}
 
       <AdminGamesTable bracketId={bracketId} initialGames={gamesForUi as any} />
     </div>

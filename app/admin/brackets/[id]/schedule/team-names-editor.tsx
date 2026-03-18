@@ -10,6 +10,12 @@ type TeamRow = {
   teamName: string;
 };
 
+type TeamGroup = {
+  key: string;
+  title: string;
+  teams: TeamRow[];
+};
+
 type SaveState = 'saved' | 'unsaved' | 'saving' | 'error';
 
 type SaveResponse = {
@@ -51,24 +57,24 @@ const inputClassName =
 
 export default function TeamNamesEditor({
   bracketId,
-  teams,
+  groups,
 }: {
   bracketId: number;
-  teams: TeamRow[];
+  groups: TeamGroup[];
 }) {
   const router = useRouter();
 
-  const [teamRows, setTeamRows] = useState<TeamRow[]>(teams);
+  const [teamGroups, setTeamGroups] = useState<TeamGroup[]>(groups);
   const [saveState, setSaveState] = useState<SaveState>('saved');
 
-  const rowsRef = useRef(teamRows);
+  const groupsRef = useRef(teamGroups);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveVersionRef = useRef(0);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    rowsRef.current = teamRows;
-  }, [teamRows]);
+    groupsRef.current = teamGroups;
+  }, [teamGroups]);
 
   useEffect(() => {
     return () => {
@@ -77,9 +83,14 @@ export default function TeamNamesEditor({
     };
   }, []);
 
+  const flatTeams = useMemo(
+    () => teamGroups.flatMap((group) => group.teams),
+    [teamGroups]
+  );
+
   const hasBlankNames = useMemo(
-    () => teamRows.some((team) => !team.teamName.trim()),
-    [teamRows]
+    () => flatTeams.some((team) => !team.teamName.trim()),
+    [flatTeams]
   );
 
   const scheduleRefresh = useCallback(() => {
@@ -93,10 +104,12 @@ export default function TeamNamesEditor({
   const saveTeams = useCallback(
     async (version: number) => {
       const payload = {
-        teams: rowsRef.current.map((team) => ({
-          id: team.id,
-          teamName: team.teamName.trim(),
-        })),
+        teams: groupsRef.current.flatMap((group) =>
+          group.teams.map((team) => ({
+            id: team.id,
+            teamName: team.teamName.trim(),
+          }))
+        ),
       };
 
       setSaveState('saving');
@@ -115,11 +128,14 @@ export default function TeamNamesEditor({
         }
 
         if (saveVersionRef.current === version) {
-          setTeamRows((prev) =>
-            prev.map((team) => {
-              const updated = json.teams?.find((t) => t.id === team.id);
-              return updated ? { ...team, teamName: updated.teamName } : team;
-            })
+          setTeamGroups((prev) =>
+            prev.map((group) => ({
+              ...group,
+              teams: group.teams.map((team) => {
+                const updated = json.teams?.find((t) => t.id === team.id);
+                return updated ? { ...team, teamName: updated.teamName } : team;
+              }),
+            }))
           );
           setSaveState('saved');
           scheduleRefresh();
@@ -146,9 +162,15 @@ export default function TeamNamesEditor({
 
   const onChange = useCallback(
     (id: number, value: string) => {
-      setTeamRows((prev) =>
-        prev.map((team) => (team.id === id ? { ...team, teamName: value } : team))
+      setTeamGroups((prev) =>
+        prev.map((group) => ({
+          ...group,
+          teams: group.teams.map((team) =>
+            team.id === id ? { ...team, teamName: value } : team
+          ),
+        }))
       );
+
       setSaveState('unsaved');
 
       if (!value.trim()) return;
@@ -163,29 +185,51 @@ export default function TeamNamesEditor({
         <div>
           <h2 className='text-xl font-semibold text-white'>Team Names</h2>
           <p className='mt-1 text-sm text-white/65'>
-            Update team names here. Changes auto-save and also update the scheduled
-            matchups for this bracket.
+            Update team names by mite level. Changes auto-save and also update the
+            scheduled matchups for this bracket.
           </p>
         </div>
 
         <SaveBadge state={hasBlankNames ? 'error' : saveState} />
       </div>
 
-      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-        {teamRows.map((team) => (
-          <div key={team.id} className='space-y-2'>
-            <label
-              htmlFor={`team-${team.id}`}
-              className='text-sm font-medium text-white/85'
-            >
-              {team.label}
-            </label>
-            <input
-              id={`team-${team.id}`}
-              value={team.teamName}
-              onChange={(e) => onChange(team.id, e.target.value)}
-              className={inputClassName}
-            />
+      <div className='space-y-6'>
+        {teamGroups.map((group) => (
+          <div
+            key={group.key}
+            className='rounded-xl border border-emerald-900/50 bg-[#0f2217] p-4'
+          >
+            <div className='mb-4 flex items-center justify-between gap-3'>
+              <div>
+                <h3 className='text-lg font-semibold text-white'>{group.title}</h3>
+                <p className='mt-1 text-xs text-white/60'>
+                  {group.teams.length} team{group.teams.length === 1 ? '' : 's'}
+                </p>
+              </div>
+
+              <span className='inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/85'>
+                {group.title}
+              </span>
+            </div>
+
+            <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+              {group.teams.map((team) => (
+                <div key={team.id} className='space-y-2'>
+                  <label
+                    htmlFor={`team-${team.id}`}
+                    className='text-sm font-medium text-white/85'
+                  >
+                    {team.label}
+                  </label>
+                  <input
+                    id={`team-${team.id}`}
+                    value={team.teamName}
+                    onChange={(e) => onChange(team.id, e.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>

@@ -124,7 +124,6 @@ export function restMinutesForLevelToken(levelToken: string) {
 }
 
 /**
- * Upgrade 8.6.4:
  * Allows an exact stageId→restMinutes map (from engineConfig) to override parsing.
  */
 export function makeRestMinutesResolver(args: {
@@ -138,29 +137,26 @@ export function makeRestMinutesResolver(args: {
   const stageMap = args.stageIdToRestMinutes ?? {};
 
   return (g) => {
-    // 0) Exact stageId map (engineConfig-derived)
     if (g.stageId && Object.prototype.hasOwnProperty.call(stageMap, g.stageId)) {
       const m = Number(stageMap[g.stageId]);
       if (Number.isFinite(m) && m > 0) return m;
     }
 
-    // 1) stageId token parsing
     const stageToken = parseLevelFromStageId(g.stageId);
     const byStage = restMinutesForLevelToken(stageToken);
     if (byStage > 0) return byStage;
 
-    // 2) team-level on refs (future-proof if refs later include youthLevel/level)
     const refToken = (ref: ParticipantRef | null) => {
       const anyRef = ref as any;
       const t = anyRef?.youthLevel ?? anyRef?.level ?? anyRef?.division;
       return typeof t === "string" ? t : "";
     };
+
     const homeTok = restMinutesForLevelToken(refToken(g.homeRef));
     const awayTok = restMinutesForLevelToken(refToken(g.awayRef));
     const byRef = Math.max(homeTok, awayTok);
     if (byRef > 0) return byRef;
 
-    // 3) fallback
     return fallback;
   };
 }
@@ -182,6 +178,8 @@ export type GreedyScheduleDebug = {
     scheduledCount: number;
     restConflicts: number;
     noSlot: number;
+    adjacentStarts: number;
+    minTeamGapMinutes: number;
   }>;
 };
 
@@ -205,10 +203,12 @@ function sortGamesByStageId(games: SchedulableGame[]) {
   return [...games].sort((a, b) => {
     const d = stageTypePriority(a) - stageTypePriority(b);
     if (d !== 0) return d;
+
     const as = a.stageId ?? "";
     const bs = b.stageId ?? "";
     const ds = as.localeCompare(bs);
     if (ds !== 0) return ds;
+
     return a.engineGameId.localeCompare(b.engineGameId);
   });
 }
@@ -216,14 +216,17 @@ function sortGamesByStageId(games: SchedulableGame[]) {
 function interleaveByStageId(games: SchedulableGame[]) {
   const base = sortGamesByStageId(games);
   const buckets = new Map<string, SchedulableGame[]>();
+
   for (const g of base) {
     const key = `${stageTypePriority(g)}::${g.stageId ?? ""}`;
     const arr = buckets.get(key) ?? [];
     arr.push(g);
     buckets.set(key, arr);
   }
+
   const keys = [...buckets.keys()].sort();
   const out: SchedulableGame[] = [];
+
   while (true) {
     let progressed = false;
     for (const k of keys) {
@@ -235,6 +238,7 @@ function interleaveByStageId(games: SchedulableGame[]) {
     }
     if (!progressed) break;
   }
+
   return out;
 }
 
@@ -278,6 +282,7 @@ function sortGamesMostConstrainedFirst(args: {
   const { games, minRestMinutes, restMinutesForGame } = args;
 
   const teamCounts = new Map<string, number>();
+
   for (const g of games) {
     if (isTeamRef(g.homeRef)) {
       teamCounts.set(
@@ -309,7 +314,6 @@ function sortGamesMostConstrainedFirst(args: {
       : 0;
     const crowd = homeN + awayN;
     const rest = restFor(g);
-    // Heuristic: higher rest needs + teams that appear a lot → schedule earlier
     return rest * 1000 + crowd * 10 + stageTypePriority(g) * -1;
   };
 
@@ -322,23 +326,33 @@ function sortGamesMostConstrainedFirst(args: {
   });
 }
 
-/**
- * ✅ Upgrade 10:
- * Slots may restrict which stage types can be scheduled in them.
- * If allowedStageTypes is omitted/empty, the slot is treated as "allowed for all" (backward compatible).
- */
 function slotAllowsStageType(slot: TimeSlotInput, stageType: string) {
   const allowed = slot.allowedStageTypes;
   if (!allowed || allowed.length === 0) return true;
   return allowed.includes(stageType);
 }
 
+function getNominalSlotIntervalMs(sortedSlots: TimeSlotInput[]) {
+  let best = Number.POSITIVE_INFINITY;
+
+  for (let i = 1; i < sortedSlots.length; i++) {
+    const prev = new Date(sortedSlots[i - 1].start).getTime();
+    const next = new Date(sortedSlots[i].start).getTime();
+
+    if (!Number.isFinite(prev) || !Number.isFinite(next)) continue;
+    const diff = next - prev;
+    if (diff > 0 && diff < best) best = diff;
+  }
+
+  return Number.isFinite(best) ? best : 60 * 60 * 1000;
+}
+
 function scheduleGamesGreedyCore(args: {
   gamesOrdered: SchedulableGame[];
   slots: TimeSlotInput[];
-  minRestMinutes: number; // REST-AFTER-END minutes
-  restMinutesForGame?: RestMinutesResolver; // REST-AFTER-END minutes
-  gameDurationMinutes: number; // e.g. 60
+  minRestMinutes: number;
+  restMinutesForGame?: RestMinutesResolver;
+  gameDurationMinutes: number;
 }): GreedyScheduleResult {
   const {
     gamesOrdered,
@@ -353,6 +367,8 @@ function scheduleGamesGreedyCore(args: {
   const sortedSlots = [...slots].sort(
     (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
   );
+
+  const nominalSlotIntervalMs = getNominalSlotIntervalMs(sortedSlots);
 
   const startsByTeam = new Map<string, number[]>();
   const usedSlotIds = new Set<string>();
@@ -371,10 +387,11 @@ function scheduleGamesGreedyCore(args: {
   ) => {
     const starts = startsByTeam.get(teamId);
     if (!starts || starts.length === 0) return true;
+
     for (const prev of starts) {
-      // Strict rule: nextStart must be >= prevStart + requiredGapMs
       if (Math.abs(slotStart - prev) < requiredGapMs) return false;
     }
+
     return true;
   };
 
@@ -397,14 +414,21 @@ function scheduleGamesGreedyCore(args: {
     const homeId = g.homeRef.teamId;
     const awayId = g.awayRef.teamId;
 
-    // restAfterEndMinutes = minutes of break AFTER the game ends
     const restAfterEndMinutes = Number.isFinite(restMinutesForGame?.(g))
       ? (restMinutesForGame!(g) as number)
       : minRestMinutes;
 
-    // Required gap between START times = game duration + rest after end
-    const requiredGapMs =
+    let requiredGapMs =
       gameDurationMs + Math.max(0, restAfterEndMinutes) * 60 * 1000;
+
+    /**
+     * Jamboree preference:
+     * add one extra slot interval as a stronger anti-compression buffer so the
+     * same team is not packed too tightly when multiple valid schedules exist.
+     */
+    if (g.stageType === "JAMBOREE") {
+      requiredGapMs += nominalSlotIntervalMs;
+    }
 
     let placed = false;
     let sawUnusedSlot = false;
@@ -412,8 +436,6 @@ function scheduleGamesGreedyCore(args: {
 
     for (const slot of sortedSlots) {
       if (usedSlotIds.has(slot.id)) continue;
-
-      // ✅ Upgrade 10: enforce slot → stageType compatibility
       if (!slotAllowsStageType(slot, g.stageType)) continue;
 
       sawUnusedSlot = true;
@@ -454,7 +476,7 @@ function scheduleGamesGreedyCore(args: {
 export function scheduleGamesGreedy(args: {
   games: SchedulableGame[];
   slots: TimeSlotInput[];
-  minRestMinutes: number; // REST-AFTER-END
+  minRestMinutes: number;
   restMinutesForGame?: RestMinutesResolver;
   gameDurationMinutes: number;
 }): GreedyScheduleResult {
@@ -470,19 +492,88 @@ export function scheduleGamesGreedy(args: {
   });
 }
 
+function buildFairnessMetrics(args: {
+  result: GreedyScheduleResult;
+  slots: TimeSlotInput[];
+  games: SchedulableGame[];
+}) {
+  const slotStartById = new Map<string, number>();
+  for (const slot of args.slots) {
+    const ms = new Date(slot.start).getTime();
+    if (Number.isFinite(ms)) slotStartById.set(slot.id, ms);
+  }
+
+  const gameById = new Map<string, SchedulableGame>();
+  for (const game of args.games) {
+    gameById.set(game.engineGameId, game);
+  }
+
+  const startsByTeam = new Map<string, number[]>();
+
+  for (const a of args.result.assignments) {
+    const game = gameById.get(a.engineGameId);
+    const startMs = slotStartById.get(a.slotId);
+
+    if (!game || !Number.isFinite(startMs)) continue;
+
+    const teamIds: string[] = [];
+    if (isTeamRef(game.homeRef)) teamIds.push(game.homeRef.teamId);
+    if (isTeamRef(game.awayRef)) teamIds.push(game.awayRef.teamId);
+
+    for (const teamId of teamIds) {
+      const arr = startsByTeam.get(teamId) ?? [];
+      arr.push(startMs!);
+      startsByTeam.set(teamId, arr);
+    }
+  }
+
+  let adjacentStarts = 0;
+  let minTeamGapMinutes = Number.POSITIVE_INFINITY;
+  let totalGapMinutes = 0;
+
+  const nominalSlotIntervalMs = getNominalSlotIntervalMs(
+    [...args.slots].sort(
+      (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+    )
+  );
+
+  for (const starts of startsByTeam.values()) {
+    const ordered = [...starts].sort((a, b) => a - b);
+
+    for (let i = 1; i < ordered.length; i++) {
+      const diffMs = ordered[i] - ordered[i - 1];
+      const diffMinutes = diffMs / 60000;
+
+      minTeamGapMinutes = Math.min(minTeamGapMinutes, diffMinutes);
+      totalGapMinutes += diffMinutes;
+
+      if (diffMs <= nominalSlotIntervalMs * 2.01) {
+        adjacentStarts++;
+      }
+    }
+  }
+
+  if (!Number.isFinite(minTeamGapMinutes)) {
+    minTeamGapMinutes = 999999;
+  }
+
+  return {
+    adjacentStarts,
+    minTeamGapMinutes,
+    totalGapMinutes,
+  };
+}
+
 /**
- * Upgrade 8.7 – Smarter Slot Usage
- *
- * Run the greedy scheduler multiple times with different deterministic orderings,
- * keep the best result (max scheduled games).
+ * Smarter slot usage with fairness tie-breaks.
  */
 export function scheduleGamesGreedySmart(args: {
   games: SchedulableGame[];
   slots: TimeSlotInput[];
-  minRestMinutes: number; // REST-AFTER-END
+  minRestMinutes: number;
   restMinutesForGame?: RestMinutesResolver;
-  gameDurationMinutes: number; // ✅ required now
-  maxAttempts?: number; // default 7
+  gameDurationMinutes: number;
+  maxAttempts?: number;
 }): GreedyScheduleResultWithDebug {
   const {
     games,
@@ -498,7 +589,6 @@ export function scheduleGamesGreedySmart(args: {
       ? Math.min(10, Math.max(1, Math.floor(maxAttempts)))
       : 7;
 
-  // Seed is derived from the game ids so results are stable for the same input.
   const seedBase = fnv1a32(
     sortGamesDefault(games)
       .map((g) => g.engineGameId)
@@ -521,7 +611,6 @@ export function scheduleGamesGreedySmart(args: {
     }),
   });
 
-  // Add deterministic shuffles of the default ordering.
   const shuffleCount = Math.max(0, attemptCap - strategies.length);
   for (let i = 0; i < shuffleCount; i++) {
     const seed = (seedBase + i * 1013904223) >>> 0;
@@ -538,6 +627,8 @@ export function scheduleGamesGreedySmart(args: {
     scheduledCount: number;
     restConflicts: number;
     noSlot: number;
+    adjacentStarts: number;
+    minTeamGapMinutes: number;
   }> = [];
 
   const countReasons = (r: GreedyScheduleResult) => {
@@ -550,70 +641,91 @@ export function scheduleGamesGreedySmart(args: {
     return { restConflicts, noSlot };
   };
 
-  let bestName = tried[0]?.name ?? "default";
-  let best = scheduleGamesGreedyCore({
-    gamesOrdered: tried[0]?.order ?? sortGamesDefault(games),
-    slots,
-    minRestMinutes,
-    restMinutesForGame,
-    gameDurationMinutes,
-  });
-
-  {
-    const c = countReasons(best);
-    attemptStats.push({
-      strategy: bestName,
-      scheduledCount: best.assignments.length,
-      restConflicts: c.restConflicts,
-      noSlot: c.noSlot,
-    });
-  }
-
   const restConflictCount = (r: GreedyScheduleResult) =>
     r.unscheduledDetailed.filter((u) => u.reason === "REST_RULE_CONFLICT").length;
 
-  const isBetter = (a: GreedyScheduleResult, b: GreedyScheduleResult) => {
-    if (a.assignments.length !== b.assignments.length)
-      return a.assignments.length > b.assignments.length;
-    // Tie-break: fewer rest conflicts is better
-    const ar = restConflictCount(a);
-    const br = restConflictCount(b);
-    if (ar !== br) return ar < br;
-    // Final deterministic tie-break: compare assignment signature
-    const sig = (r: GreedyScheduleResult) =>
-      r.assignments
-        .map((x) => `${x.slotId}:${x.engineGameId}`)
-        .sort()
-        .join("|");
-    return sig(a) < sig(b);
-  };
+  const signature = (r: GreedyScheduleResult) =>
+    r.assignments
+      .map((x) => `${x.slotId}:${x.engineGameId}`)
+      .sort()
+      .join("|");
 
-  for (let i = 1; i < tried.length; i++) {
-    const t = tried[i];
-    const res = scheduleGamesGreedyCore({
-      gamesOrdered: t.order,
+  const runStrategy = (name: string, order: SchedulableGame[]) => {
+    const result = scheduleGamesGreedyCore({
+      gamesOrdered: order,
       slots,
       minRestMinutes,
       restMinutesForGame,
       gameDurationMinutes,
     });
 
-    const c = countReasons(res);
+    const reasons = countReasons(result);
+    const fairness = buildFairnessMetrics({ result, slots, games });
+
     attemptStats.push({
-      strategy: t.name,
-      scheduledCount: res.assignments.length,
-      restConflicts: c.restConflicts,
-      noSlot: c.noSlot,
+      strategy: name,
+      scheduledCount: result.assignments.length,
+      restConflicts: reasons.restConflicts,
+      noSlot: reasons.noSlot,
+      adjacentStarts: fairness.adjacentStarts,
+      minTeamGapMinutes: fairness.minTeamGapMinutes,
     });
 
-    if (isBetter(res, best)) {
-      best = res;
+    return {
+      result,
+      fairness,
+      restConflicts: reasons.restConflicts,
+    };
+  };
+
+  const first = tried[0] ?? { name: "default", order: sortGamesDefault(games) };
+  let bestName = first.name;
+  let bestRun = runStrategy(first.name, first.order);
+
+  const isBetter = (
+    candidate: ReturnType<typeof runStrategy>,
+    current: ReturnType<typeof runStrategy>
+  ) => {
+    if (candidate.result.assignments.length !== current.result.assignments.length) {
+      return candidate.result.assignments.length > current.result.assignments.length;
+    }
+
+    if (candidate.restConflicts !== current.restConflicts) {
+      return candidate.restConflicts < current.restConflicts;
+    }
+
+    if (candidate.fairness.adjacentStarts !== current.fairness.adjacentStarts) {
+      return candidate.fairness.adjacentStarts < current.fairness.adjacentStarts;
+    }
+
+    if (
+      candidate.fairness.minTeamGapMinutes !== current.fairness.minTeamGapMinutes
+    ) {
+      return (
+        candidate.fairness.minTeamGapMinutes >
+        current.fairness.minTeamGapMinutes
+      );
+    }
+
+    if (candidate.fairness.totalGapMinutes !== current.fairness.totalGapMinutes) {
+      return candidate.fairness.totalGapMinutes > current.fairness.totalGapMinutes;
+    }
+
+    return signature(candidate.result) < signature(current.result);
+  };
+
+  for (let i = 1; i < tried.length; i++) {
+    const t = tried[i];
+    const run = runStrategy(t.name, t.order);
+
+    if (isBetter(run, bestRun)) {
+      bestRun = run;
       bestName = t.name;
     }
   }
 
   return {
-    ...best,
+    ...bestRun.result,
     debug: {
       attemptCount: tried.length,
       bestStrategy: bestName,

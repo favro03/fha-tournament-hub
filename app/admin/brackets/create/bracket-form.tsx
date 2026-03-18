@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import Image from "next/image";
 
 import {
   Form,
@@ -20,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { UploadButton } from "@/lib/uploadthing";
-import Image from "next/image";
 
 const YOUTH_LEVELS = [
   { value: "MINI_MITE", label: "Mini Mite" },
@@ -41,7 +41,72 @@ const BRACKET_SIDES = [
   { value: "AWAY", label: "Away" },
 ] as const;
 
+const STANDARD_TEAM_COUNT_OPTIONS = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const JAMBoree_TEAM_COUNT_OPTIONS = [0, 2, 3, 4, 5, 6, 7, 8];
+
+type MiteLevelKey = "miniMite" | "mite1" | "mite2" | "mite3";
+
+const MITE_LEVELS = [
+  {
+    key: "miniMite" as MiteLevelKey,
+    enabledField: "enableMiniMite" as const,
+    countField: "miniMiteTeamCount" as const,
+    teamsField: "miniMiteTeams" as const,
+    stageId: "jamboree:MINI_MITE",
+    levelToken: "MINI_MITE",
+    label: "Mini Mite",
+  },
+  {
+    key: "mite1" as MiteLevelKey,
+    enabledField: "enableMite1" as const,
+    countField: "mite1TeamCount" as const,
+    teamsField: "mite1Teams" as const,
+    stageId: "jamboree:MITE1",
+    levelToken: "MITE1",
+    label: "Mite 1",
+  },
+  {
+    key: "mite2" as MiteLevelKey,
+    enabledField: "enableMite2" as const,
+    countField: "mite2TeamCount" as const,
+    teamsField: "mite2Teams" as const,
+    stageId: "jamboree:MITE2",
+    levelToken: "MITE2",
+    label: "Mite 2",
+  },
+  {
+    key: "mite3" as MiteLevelKey,
+    enabledField: "enableMite3" as const,
+    countField: "mite3TeamCount" as const,
+    teamsField: "mite3Teams" as const,
+    stageId: "jamboree:MITE3",
+    levelToken: "MITE3",
+    label: "Mite 3",
+  },
+] as const;
+
 type BracketFormMode = "create" | "update";
+
+function stringifyPipeTeams(teams: string[]) {
+  return teams.map((t) => t.trim()).filter(Boolean).join("|");
+}
+
+function parsePipeSeparatedTeams(value?: string) {
+  const s = (value ?? "").trim();
+  if (!s) return [];
+  return s
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function ensureTeamListSize(existing: string[], targetCount: number, prefix = "Team") {
+  const next = [...existing];
+  while (next.length < targetCount) {
+    next.push(`${prefix}${next.length + 1}`);
+  }
+  return next.slice(0, targetCount);
+}
 
 function makeBracketFormSchema(mode: BracketFormMode) {
   return z
@@ -60,11 +125,28 @@ function makeBracketFormSchema(mode: BracketFormMode) {
       }),
 
       image: z.string().optional(),
-
       stageType: z.string().optional(),
-      seeding: z.string().optional(),
 
       guaranteedGamesPerTeam: z.union([z.string(), z.number()]).optional(),
+      standardTeamCount: z.union([z.string(), z.number()]).optional(),
+      standardTeams: z.string().optional(),
+
+      jamboreeGamesPerTeam: z.union([z.string(), z.number()]).optional(),
+
+      enableMiniMite: z.boolean().optional(),
+      enableMite1: z.boolean().optional(),
+      enableMite2: z.boolean().optional(),
+      enableMite3: z.boolean().optional(),
+
+      miniMiteTeamCount: z.union([z.string(), z.number()]).optional(),
+      mite1TeamCount: z.union([z.string(), z.number()]).optional(),
+      mite2TeamCount: z.union([z.string(), z.number()]).optional(),
+      mite3TeamCount: z.union([z.string(), z.number()]).optional(),
+
+      miniMiteTeams: z.string().optional(),
+      mite1Teams: z.string().optional(),
+      mite2Teams: z.string().optional(),
+      mite3Teams: z.string().optional(),
     })
     .superRefine((val, ctx) => {
       if (val.bracketSource === "UPLOAD") {
@@ -77,53 +159,155 @@ function makeBracketFormSchema(mode: BracketFormMode) {
         }
       }
 
-      if (val.bracketSource === "BUILD") {
-        if (!val.stageType || val.stageType.trim().length === 0) {
+      if (val.bracketSource !== "BUILD") return;
+
+      if (!val.stageType || val.stageType.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["stageType"],
+          message: "Please select a build option.",
+        });
+        return;
+      }
+
+      if (mode !== "create") return;
+
+      if (val.stageType === "POOL_BRACKET") {
+        const countRaw = val.standardTeamCount;
+        const count =
+          typeof countRaw === "number"
+            ? countRaw
+            : Number(String(countRaw ?? "").trim());
+
+        const teams = parsePipeSeparatedTeams(val.standardTeams);
+
+        if (!Number.isFinite(count) || count < 2) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            path: ["stageType"],
-            message: "Please select a build option (Pool+Bracket or Jamboree).",
+            path: ["standardTeamCount"],
+            message: "Select at least 2 teams.",
           });
         }
 
-        if (mode === "create") {
-          const seeding = (val.seeding ?? "").trim();
-          const teams = seeding.length
-            ? seeding
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : [];
+        if (teams.length < count) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["standardTeams"],
+            message: "One or more team names are missing.",
+          });
+        }
 
-          if (teams.length < 2) {
+        if (teams.some((t) => !t.trim())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["standardTeams"],
+            message: "Team names cannot be blank.",
+          });
+        }
+
+        const gRaw = val.guaranteedGamesPerTeam;
+        const g =
+          typeof gRaw === "number" ? gRaw : Number(String(gRaw ?? "").trim());
+
+        if (!Number.isFinite(g) || g < 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["guaranteedGamesPerTeam"],
+            message: "Select guaranteed pool games per team.",
+          });
+        } else if (Number.isFinite(count) && count >= 2 && g > count - 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["guaranteedGamesPerTeam"],
+            message: `Guaranteed games per team cannot exceed ${count - 1} for ${count} teams.`,
+          });
+        }
+
+        return;
+      }
+
+      if (val.stageType === "JAMBOREE") {
+        const enabledLevels = [
+          {
+            enabled: !!val.enableMiniMite,
+            countRaw: val.miniMiteTeamCount,
+            path: "miniMiteTeams" as const,
+            label: "Mini Mite",
+            teams: parsePipeSeparatedTeams(val.miniMiteTeams),
+          },
+          {
+            enabled: !!val.enableMite1,
+            countRaw: val.mite1TeamCount,
+            path: "mite1Teams" as const,
+            label: "Mite 1",
+            teams: parsePipeSeparatedTeams(val.mite1Teams),
+          },
+          {
+            enabled: !!val.enableMite2,
+            countRaw: val.mite2TeamCount,
+            path: "mite2Teams" as const,
+            label: "Mite 2",
+            teams: parsePipeSeparatedTeams(val.mite2Teams),
+          },
+          {
+            enabled: !!val.enableMite3,
+            countRaw: val.mite3TeamCount,
+            path: "mite3Teams" as const,
+            label: "Mite 3",
+            teams: parsePipeSeparatedTeams(val.mite3Teams),
+          },
+        ].filter((x) => x.enabled);
+
+        if (enabledLevels.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["stageType"],
+            message: "Enable at least one mite level for the jamboree.",
+          });
+        }
+
+        for (const level of enabledLevels) {
+          const count =
+            typeof level.countRaw === "number"
+              ? level.countRaw
+              : Number(String(level.countRaw ?? "").trim());
+
+          if (!Number.isFinite(count) || count < 2) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              path: ["seeding"],
-              message: "Please select at least 2 teams.",
+              path: [level.path],
+              message: `${level.label} needs at least 2 teams.`,
+            });
+            continue;
+          }
+
+          if (level.teams.length < count) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [level.path],
+              message: `${level.label} is missing one or more team names.`,
             });
           }
 
-          if (val.stageType === "POOL_BRACKET") {
-            const gRaw = val.guaranteedGamesPerTeam;
-            const g =
-              typeof gRaw === "number"
-                ? gRaw
-                : Number(String(gRaw ?? "").trim());
-
-            if (!Number.isFinite(g) || g < 1) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["guaranteedGamesPerTeam"],
-                message: "Select guaranteed pool games per team.",
-              });
-            } else if (teams.length >= 2 && g > teams.length - 1) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["guaranteedGamesPerTeam"],
-                message: `Guaranteed games per team cannot exceed ${teams.length - 1} for ${teams.length} teams.`,
-              });
-            }
+          if (level.teams.some((t) => !t.trim())) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [level.path],
+              message: `${level.label} has a blank team name.`,
+            });
           }
+        }
+
+        const gRaw = val.jamboreeGamesPerTeam;
+        const g =
+          typeof gRaw === "number" ? gRaw : Number(String(gRaw ?? "").trim());
+
+        if (!Number.isFinite(g) || g < 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["jamboreeGamesPerTeam"],
+            message: "Enter games per team for the mite jamboree.",
+          });
         }
       }
     });
@@ -169,20 +353,92 @@ function inferStageType(initial?: BracketFormInitial) {
   return "POOL_BRACKET";
 }
 
-function parseTeamNamesFromSeeding(seeding?: string) {
-  const s = (seeding ?? "").trim();
-  if (!s) return [];
-  return s
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
 const selectClassName =
   "block h-11 w-full rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-2 text-sm text-white shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20";
 
 const toggleBaseClass =
   "rounded-md border px-3 py-2 text-sm font-medium transition-colors";
+
+function buildJamboreePayload(values: FormValues) {
+  const gamesRaw = values.jamboreeGamesPerTeam;
+  const gamesPerTeam =
+    typeof gamesRaw === "number"
+      ? gamesRaw
+      : Number(String(gamesRaw ?? "").trim());
+
+  const selectedLevels = MITE_LEVELS.filter((level) => {
+    return Boolean(values[level.enabledField]);
+  });
+
+  const teams: Array<{ id: string; name: string }> = [];
+  const stages: Array<{
+    stageId: string;
+    levelToken: string;
+    gamesPerTeam: number;
+    teamIds: string[];
+  }> = [];
+
+  for (const level of selectedLevels) {
+    const teamNames = parsePipeSeparatedTeams(String(values[level.teamsField] ?? ""));
+    const teamIds: string[] = [];
+
+    for (const teamName of teamNames) {
+      const teamId = `${level.levelToken.toLowerCase()}_${teamIds.length + 1}`;
+      teamIds.push(teamId);
+      teams.push({
+        id: teamId,
+        name: teamName,
+      });
+    }
+
+    if (teamIds.length >= 2) {
+      stages.push({
+        stageId: level.stageId,
+        levelToken: level.levelToken,
+        gamesPerTeam,
+        teamIds,
+      });
+    }
+  }
+
+  return { gamesPerTeam, teams, stages };
+}
+
+function buildStandardPayload(values: FormValues) {
+  const teamNames = parsePipeSeparatedTeams(values.standardTeams);
+  const teams = teamNames.map((name, idx) => ({
+    id: `t${idx + 1}`,
+    name,
+  }));
+
+  const nTeams = teams.length;
+
+  const guaranteedRaw = values.guaranteedGamesPerTeam;
+  const gamesPerTeam =
+    typeof guaranteedRaw === "number"
+      ? guaranteedRaw
+      : Number(String(guaranteedRaw ?? "").trim());
+
+  const placementGames =
+    nTeams >= 6
+      ? [
+          { type: "CHAMPIONSHIP" },
+          { type: "THIRD_PLACE" },
+          { type: "FIFTH_PLACE" },
+        ]
+      : nTeams >= 4
+        ? [{ type: "CHAMPIONSHIP" }, { type: "THIRD_PLACE" }]
+        : [{ type: "CHAMPIONSHIP" }];
+
+  return {
+    teams,
+    config: {
+      type: "ROUND_ROBIN",
+      gamesPerTeam: Number.isFinite(gamesPerTeam) ? gamesPerTeam : undefined,
+      placementGames,
+    },
+  };
+}
 
 export default function BracketForm({
   mode = "create",
@@ -192,6 +448,7 @@ export default function BracketForm({
   initial?: BracketFormInitial;
 }) {
   const router = useRouter();
+  const [isSaving, setIsSaving] = useState(false);
 
   const bracketFormSchema = useMemo(() => makeBracketFormSchema(mode), [mode]);
 
@@ -206,8 +463,25 @@ export default function BracketForm({
       bracketSource: "BUILD",
       image: "",
       stageType: "",
-      seeding: "",
       guaranteedGamesPerTeam: "3",
+      standardTeamCount: 4,
+      standardTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+
+      jamboreeGamesPerTeam: "3",
+      enableMiniMite: true,
+      enableMite1: true,
+      enableMite2: true,
+      enableMite3: true,
+
+      miniMiteTeamCount: 4,
+      mite1TeamCount: 4,
+      mite2TeamCount: 4,
+      mite3TeamCount: 4,
+
+      miniMiteTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite1Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite2Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite3Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
     },
   });
 
@@ -227,28 +501,76 @@ export default function BracketForm({
       bracketSource: bracketSource as "UPLOAD" | "BUILD",
       image: initial.image ?? "",
       stageType: stageType ?? "",
-      seeding: "",
       guaranteedGamesPerTeam: "3",
+      standardTeamCount: 4,
+      standardTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+
+      jamboreeGamesPerTeam: "3",
+      enableMiniMite: true,
+      enableMite1: true,
+      enableMite2: true,
+      enableMite3: true,
+
+      miniMiteTeamCount: 4,
+      mite1TeamCount: 4,
+      mite2TeamCount: 4,
+      mite3TeamCount: 4,
+
+      miniMiteTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite1Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite2Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite3Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
     });
   }, [initial, form]);
 
   const bracketSource = form.watch("bracketSource");
   const images = form.watch("image");
   const stageType = form.watch("stageType");
-  const seedingWatch = form.watch("seeding");
 
-  const teamCount = useMemo(
-    () => parseTeamNamesFromSeeding(seedingWatch).length,
-    [seedingWatch]
-  );
+  const standardTeamCount = Number(form.watch("standardTeamCount") ?? 0);
+
+  const enableMiniMite = form.watch("enableMiniMite");
+  const enableMite1 = form.watch("enableMite1");
+  const enableMite2 = form.watch("enableMite2");
+  const enableMite3 = form.watch("enableMite3");
+
+  useEffect(() => {
+    if (stageType === "JAMBOREE" && form.getValues("youthLevel") !== "MITE") {
+      form.setValue("youthLevel", "MITE", {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [stageType, form]);
 
   const submitLabel = useMemo(() => {
-    if (mode === "update") return "Update Bracket";
-    return "Create Bracket";
-  }, [mode]);
+    if (isSaving) return mode === "update" ? "Updating..." : "Creating...";
+    return mode === "update" ? "Update Bracket" : "Create Bracket";
+  }, [mode, isSaving]);
+
+  const syncGeneratedTeamInputs = (
+    teamsField:
+      | "standardTeams"
+      | "miniMiteTeams"
+      | "mite1Teams"
+      | "mite2Teams"
+      | "mite3Teams",
+    targetCount: number
+  ) => {
+    const existing = parsePipeSeparatedTeams(String(form.getValues(teamsField) ?? ""));
+    const next = ensureTeamListSize(existing, targetCount, "Team");
+    form.setValue(teamsField, stringifyPipeTeams(next), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
 
   const onSubmit = async (values: FormValues) => {
+    if (isSaving) return;
+
     try {
+      setIsSaving(true);
+
       const date = makeDateRange(values.startDate, values.endDate);
 
       if (mode === "update") {
@@ -256,7 +578,8 @@ export default function BracketForm({
 
         const payload = {
           name: values.name,
-          youthLevel: values.youthLevel,
+          youthLevel:
+            values.stageType === "JAMBOREE" ? "MITE" : values.youthLevel,
           side: values.side,
           date,
           image: values.bracketSource === "UPLOAD" ? values.image : "",
@@ -309,50 +632,35 @@ export default function BracketForm({
         return;
       }
 
-      const teamNames = parseTeamNamesFromSeeding(values.seeding);
-      const teams = teamNames.map((name, idx) => ({
-        id: `t${idx + 1}`,
-        name,
-      }));
+      let payload: any;
 
-      const nTeams = teams.length;
+      if (values.stageType === "JAMBOREE") {
+        const jamboree = buildJamboreePayload(values);
 
-      const guaranteedRaw = values.guaranteedGamesPerTeam;
-      const gamesPerTeam =
-        typeof guaranteedRaw === "number"
-          ? guaranteedRaw
-          : Number(String(guaranteedRaw ?? "").trim());
+        payload = {
+          name: values.name,
+          youthLevel: "MITE",
+          side: values.side,
+          date,
+          teams: jamboree.teams,
+          config: {
+            type: "JAMBOREE",
+            gamesPerTeam: jamboree.gamesPerTeam,
+            stages: jamboree.stages,
+          },
+        };
+      } else {
+        const standard = buildStandardPayload(values);
 
-      const placementGames =
-        nTeams >= 6
-          ? [
-              { type: "CHAMPIONSHIP" },
-              { type: "THIRD_PLACE" },
-              { type: "FIFTH_PLACE" },
-            ]
-          : nTeams >= 4
-            ? [{ type: "CHAMPIONSHIP" }, { type: "THIRD_PLACE" }]
-            : [{ type: "CHAMPIONSHIP" }];
-
-      const config =
-        values.stageType === "JAMBOREE"
-          ? ({ type: "JAMBOREE" } as any)
-          : ({
-              type: "ROUND_ROBIN",
-              gamesPerTeam: Number.isFinite(gamesPerTeam)
-                ? gamesPerTeam
-                : undefined,
-              placementGames,
-            } as any);
-
-      const payload = {
-        name: values.name,
-        youthLevel: values.youthLevel,
-        side: values.side,
-        date,
-        teams,
-        config,
-      };
+        payload = {
+          name: values.name,
+          youthLevel: values.youthLevel,
+          side: values.side,
+          date,
+          teams: standard.teams,
+          config: standard.config,
+        };
+      }
 
       const res = await fetch("/api/brackets/generate", {
         method: "POST",
@@ -371,7 +679,179 @@ export default function BracketForm({
     } catch (err) {
       if (err instanceof Error) toast.error(err.message);
       else toast.error("Error saving bracket");
+    } finally {
+      setIsSaving(false);
     }
+  };
+
+  const renderStandardGeneratedTeamInputs = () => {
+    const names = parsePipeSeparatedTeams(String(form.watch("standardTeams") ?? ""));
+
+    if (names.length === 0) {
+      return (
+        <p className="text-sm text-white/50">
+          Select a team count to generate team name fields.
+        </p>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {names.map((name, idx) => (
+          <div key={`standard-${idx}`} className="space-y-1">
+            <label className="text-xs font-medium text-white/70">
+              Team {idx + 1}
+            </label>
+            <Input
+              value={name}
+              onChange={(e) => {
+                const current = parsePipeSeparatedTeams(
+                  String(form.getValues("standardTeams") ?? "")
+                );
+                current[idx] = e.target.value;
+                form.setValue("standardTeams", stringifyPipeTeams(current), {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderMiteLevelCard = (
+    title: string,
+    enabledField:
+      | "enableMiniMite"
+      | "enableMite1"
+      | "enableMite2"
+      | "enableMite3",
+    countField:
+      | "miniMiteTeamCount"
+      | "mite1TeamCount"
+      | "mite2TeamCount"
+      | "mite3TeamCount",
+    teamsField: "miniMiteTeams" | "mite1Teams" | "mite2Teams" | "mite3Teams",
+    enabled: boolean | undefined
+  ) => {
+    const names = parsePipeSeparatedTeams(String(form.watch(teamsField) ?? ""));
+
+    return (
+      <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold">{title}</h3>
+              <p className="text-sm text-white/70">
+                Pick how many teams are in this level, then edit the generated names.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 pt-1 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={!!enabled}
+                onChange={(e) =>
+                  form.setValue(enabledField, e.target.checked, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                className="h-4 w-4 rounded border border-emerald-500/50 bg-transparent"
+              />
+              Include
+            </label>
+          </div>
+
+          <FormField
+            control={form.control}
+            name={countField}
+            render={({ field }) => (
+              <FormItem className="max-w-[220px]">
+                <FormLabel className="text-white/90">Number of teams</FormLabel>
+                <FormControl>
+                  <select
+                    value={String(field.value ?? 0)}
+                    disabled={!enabled}
+                    className={selectClassName}
+                    onChange={(e) => {
+                      const count = Number(e.target.value);
+                      field.onChange(count);
+                      syncGeneratedTeamInputs(teamsField, count);
+                    }}
+                  >
+                    {JAMBoree_TEAM_COUNT_OPTIONS.map((count) => (
+                      <option
+                        key={count}
+                        value={count}
+                        className="bg-[#102317] text-white"
+                      >
+                        {count === 0 ? "Select count" : count}
+                      </option>
+                    ))}
+                  </select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name={teamsField}
+            render={() => (
+              <FormItem>
+                <FormLabel className="text-white/90">{title} teams</FormLabel>
+                <FormControl>
+                  <div className="rounded-md border border-emerald-900/70 bg-[#102317] p-4">
+                    {!enabled ? (
+                      <p className="text-sm text-white/50">
+                        Turn on this level to enter teams.
+                      </p>
+                    ) : names.length === 0 ? (
+                      <p className="text-sm text-white/50">
+                        Select a team count to generate team name fields.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {names.map((name, idx) => (
+                          <div key={`${teamsField}-${idx}`} className="space-y-1">
+                            <label className="text-xs font-medium text-white/70">
+                              Team {idx + 1}
+                            </label>
+                            <Input
+                              value={name}
+                              disabled={!enabled}
+                              onChange={(e) => {
+                                const current = parsePipeSeparatedTeams(
+                                  String(form.getValues(teamsField) ?? "")
+                                );
+                                current[idx] = e.target.value;
+                                form.setValue(
+                                  teamsField,
+                                  stringifyPipeTeams(current),
+                                  {
+                                    shouldDirty: true,
+                                    shouldValidate: true,
+                                  }
+                                );
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -406,6 +886,7 @@ export default function BracketForm({
                   <select
                     {...field}
                     value={field.value ?? ""}
+                    disabled={stageType === "JAMBOREE"}
                     className={selectClassName}
                   >
                     <option value="">Select division</option>
@@ -420,6 +901,12 @@ export default function BracketForm({
                     ))}
                   </select>
                 </FormControl>
+                {stageType === "JAMBOREE" ? (
+                  <p className="text-xs text-white/60">
+                    Mite jamborees are saved under the MITE division and use separate Mini
+                    Mite / Mite 1 / Mite 2 / Mite 3 groupings.
+                  </p>
+                ) : null}
                 <FormMessage />
               </FormItem>
             )}
@@ -523,67 +1010,73 @@ export default function BracketForm({
           )}
         />
 
-        {bracketSource === "UPLOAD" && (
-          <div className="upload-field flex flex-col gap-5 md:flex-row">
-            <FormField
-              control={form.control}
-              name="image"
-              render={() => (
-                <FormItem className="w-full">
-                  <FormLabel className="text-white">Bracket Image</FormLabel>
-                  <Card>
-                    <CardContent className="mt-2 min-h-48 space-y-2">
-                      <div className="flex-start space-x-2">
-                        {images && images.length > 0 && (
-                          <Image
-                            src={images}
-                            alt="bracket image"
-                            className="h-20 w-20 rounded-sm object-cover object-center"
-                            width={100}
-                            height={100}
-                          />
-                        )}
-                        <FormControl>
-                          <UploadButton
-                            endpoint="imageUploader"
-                            onClientUploadComplete={(res: { ufsUrl: string }[]) => {
-                              form.setValue("image", res[0].ufsUrl, {
-                                shouldValidate: true,
-                              });
-                            }}
-                            onUploadError={(error: Error) => {
-                              toast.error(`ERROR! ${error.message}`);
-                            }}
-                          />
-                        </FormControl>
-                      </div>
-                      <p className="text-xs text-white/60">
-                        Upload an image if you don’t want to build a bracket with the engine.
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        )}
+        {bracketSource === "UPLOAD" ? (
+          <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+            <CardContent className="space-y-4 p-5">
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold">Upload bracket image</h3>
+                <p className="text-sm text-white/70">
+                  Use this if you want the public bracket page to show your uploaded image
+                  instead of generated standings/bracket logic.
+                </p>
+              </div>
 
-        {bracketSource === "BUILD" && (
-          <>
+              <FormField
+                control={form.control}
+                name="image"
+                render={() => (
+                  <FormItem>
+                    <FormLabel className="text-white">Bracket Image</FormLabel>
+                    <FormControl>
+                      <div className="space-y-4">
+                        <UploadButton
+                          endpoint="imageUploader"
+                          onClientUploadComplete={(res) => {
+                            const url = res?.[0]?.url ?? "";
+                            form.setValue("image", url, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                            toast.success("Image uploaded!");
+                          }}
+                          onUploadError={(error: Error) => {
+                            toast.error(error.message);
+                          }}
+                        />
+                        {images ? (
+                          <div className="overflow-hidden rounded-lg border border-emerald-900/70">
+                            <Image
+                              src={images}
+                              alt="Bracket preview"
+                              width={1200}
+                              height={900}
+                              className="h-auto w-full object-contain"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
             <FormField
               control={form.control}
               name="stageType"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-white">Build Option</FormLabel>
+                  <FormLabel className="text-white">Build Format</FormLabel>
                   <FormControl>
                     <select
                       {...field}
                       value={field.value ?? ""}
                       className={selectClassName}
                     >
-                      <option value="">Select</option>
+                      <option value="">Select build format</option>
                       {BUILD_OPTIONS.map((opt) => (
                         <option
                           key={opt.value}
@@ -600,136 +1093,186 @@ export default function BracketForm({
               )}
             />
 
-            {mode === "create" && stageType && stageType.length > 0 && (
-              <div className="mb-6 space-y-3">
-                <FormLabel className="text-white">Teams</FormLabel>
+            {stageType === "POOL_BRACKET" ? (
+              <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+                <CardContent className="space-y-5 p-5">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-semibold">Pool play + placement setup</h3>
+                    <p className="text-sm text-white/70">
+                      Choose games per team, choose team count, then edit the generated
+                      team names.
+                    </p>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <label htmlFor="numTeams" className="text-sm text-white/85">
-                    Total Teams:
-                  </label>
-                  <select
-                    id="numTeams"
-                    className="h-10 rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-                    value={teamCount}
-                    onChange={(e) => {
-                      const num = parseInt(e.target.value, 10);
-                      const newTeams = Array.from(
-                        { length: num },
-                        (_, i) => `Team ${i + 1}`
-                      );
-                      form.setValue("seeding", newTeams.join(","), {
-                        shouldValidate: true,
-                      });
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="guaranteedGamesPerTeam"
+                      render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                          <FormLabel className="text-white">
+                            Guaranteed pool games per team
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={1}
+                              {...field}
+                              value={field.value ?? "3"}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                      const currentG = Number(
-                        String(form.getValues("guaranteedGamesPerTeam") ?? "3")
-                      );
-                      const maxG = Math.max(1, num - 1);
-                      if (Number.isFinite(currentG) && currentG > maxG) {
-                        form.setValue("guaranteedGamesPerTeam", String(maxG), {
-                          shouldValidate: true,
-                        });
-                      }
-                    }}
-                  >
-                    <option value={0}>Select</option>
-                    {[...Array(16)].map((_, i) => (
-                      <option
-                        key={i + 1}
-                        value={i + 1}
-                        className="bg-[#102317] text-white"
-                      >
-                        {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <FormField
+                      control={form.control}
+                      name="standardTeamCount"
+                      render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                          <FormLabel className="text-white">Number of teams</FormLabel>
+                          <FormControl>
+                            <select
+                              value={String(field.value ?? 0)}
+                              className={selectClassName}
+                              onChange={(e) => {
+                                const count = Number(e.target.value);
+                                field.onChange(count);
+                                syncGeneratedTeamInputs("standardTeams", count);
+                              }}
+                            >
+                              {STANDARD_TEAM_COUNT_OPTIONS.map((count) => (
+                                <option
+                                  key={count}
+                                  value={count}
+                                  className="bg-[#102317] text-white"
+                                >
+                                  {count === 0 ? "Select count" : count}
+                                </option>
+                              ))}
+                            </select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-                {stageType === "POOL_BRACKET" && teamCount >= 2 && (
                   <FormField
                     control={form.control}
-                    name="guaranteedGamesPerTeam"
-                    render={({ field }) => (
+                    name="standardTeams"
+                    render={() => (
                       <FormItem>
-                        <FormLabel className="text-white">
-                          Guaranteed pool games per team
-                        </FormLabel>
+                        <FormLabel className="text-white">Team names</FormLabel>
                         <FormControl>
-                          <select
-                            {...field}
-                            value={String(field.value ?? "3")}
-                            className={selectClassName}
-                          >
-                            {Array.from(
-                              { length: Math.max(1, teamCount - 1) },
-                              (_, i) => i + 1
-                            ).map((n) => (
-                              <option
-                                key={n}
-                                value={n}
-                                className="bg-[#102317] text-white"
-                              >
-                                {n}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="rounded-md border border-emerald-900/70 bg-[#102317] p-4">
+                            {standardTeamCount < 2 ? (
+                              <p className="text-sm text-white/50">
+                                Select a team count to generate team name fields.
+                              </p>
+                            ) : (
+                              renderStandardGeneratedTeamInputs()
+                            )}
+                          </div>
                         </FormControl>
-                        <div className="text-xs text-white/60">
-                          Example: 6 teams + 3 pool games per team = 9 pool games
-                          total, then placement.
-                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                )}
+                </CardContent>
+              </Card>
+            ) : null}
 
-                {(() => {
-                  const seeding = form.watch("seeding") || "";
-                  const teams = seeding ? seeding.split(",") : [];
-                  if (!teams.length || (teams.length === 1 && teams[0] === ""))
-                    return null;
-
-                  return (
-                    <div className="flex flex-col gap-2">
-                      {teams.map((team, idx) => (
-                        <Input
-                          key={idx}
-                          placeholder={`Team ${idx + 1} name`}
-                          value={team}
-                          onChange={(e) => {
-                            const updated = [...teams];
-                            updated[idx] = e.target.value;
-                            form.setValue("seeding", updated.join(","), {
-                              shouldValidate: true,
-                            });
-                          }}
-                        />
-                      ))}
+            {stageType === "JAMBOREE" ? (
+              <div className="space-y-6">
+                <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+                  <CardContent className="space-y-5 p-5">
+                    <div className="space-y-1">
+                      <h3 className="text-base font-semibold">Mite jamboree setup</h3>
+                      <p className="text-sm text-white/70">
+                        Choose the mite levels included in this event, set team count for
+                        each, and then edit the generated team names.
+                      </p>
                     </div>
-                  );
-                })()}
 
-                <p className="text-xs text-white/60">
-                  Select total teams. You can edit names now or later.
-                </p>
+                    <FormField
+                      control={form.control}
+                      name="jamboreeGamesPerTeam"
+                      render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                          <FormLabel className="text-white">Games per team</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={1}
+                              {...field}
+                              value={field.value ?? "3"}
+                            />
+                          </FormControl>
+                          <p className="text-xs text-white/60">
+                            This will be applied to each enabled mite level.
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                  {renderMiteLevelCard(
+                    "Mini Mite",
+                    "enableMiniMite",
+                    "miniMiteTeamCount",
+                    "miniMiteTeams",
+                    enableMiniMite
+                  )}
+                  {renderMiteLevelCard(
+                    "Mite 1",
+                    "enableMite1",
+                    "mite1TeamCount",
+                    "mite1Teams",
+                    enableMite1
+                  )}
+                  {renderMiteLevelCard(
+                    "Mite 2",
+                    "enableMite2",
+                    "mite2TeamCount",
+                    "mite2Teams",
+                    enableMite2
+                  )}
+                  {renderMiteLevelCard(
+                    "Mite 3",
+                    "enableMite3",
+                    "mite3TeamCount",
+                    "mite3Teams",
+                    enableMite3
+                  )}
+                </div>
               </div>
-            )}
-
-            {mode === "update" && (
-              <p className="text-xs text-white/60">
-                Teams and generated games are not edited here. Use the Teams/Bracket
-                tools (or a future “Regenerate” action) if you need to rebuild
-                structure.
-              </p>
-            )}
-          </>
+            ) : null}
+          </div>
         )}
 
-        <Button type="submit" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? "Creating…" : submitLabel}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={isSaving}>
+            {submitLabel}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isSaving}
+            onClick={() => router.push("/admin/brackets")}
+          >
+            Cancel
+          </Button>
+          {isSaving ? (
+            <span className="text-sm text-white/70">
+              Saving bracket and generating games...
+            </span>
+          ) : null}
+        </div>
       </form>
     </Form>
   );

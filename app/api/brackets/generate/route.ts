@@ -40,6 +40,62 @@ function filterSlotsByAllowedStage(slots: any[], stageType: string) {
   });
 }
 
+function normalizeToken(raw: string) {
+  return String(raw ?? "")
+    .toUpperCase()
+    .replace(/\s+/g, "_")
+    .replace(/-+/g, "_")
+    .trim();
+}
+
+function formatJamboreeLabel(stageId?: string) {
+  const token = normalizeToken(parseLevelFromStageId(stageId) || "");
+  if (token === "MINI_MITE") return "Mini Mite Jamboree";
+  if (token === "MITE1") return "Mite 1 Jamboree";
+  if (token === "MITE2") return "Mite 2 Jamboree";
+  if (token === "MITE3") return "Mite 3 Jamboree";
+  return "Jamboree";
+}
+
+function buildJamboreeWeekendWindows(args: {
+  friISO: string;
+  satISO: string;
+  sunISO: string;
+}) {
+  const { friISO, satISO, sunISO } = args;
+
+  return [
+    {
+      dateISO: friISO,
+      startTime: "17:15",
+      lastStartTime: "20:45",
+      label: "Fri Jamboree",
+      allowedStageTypes: ["JAMBOREE"],
+    },
+    {
+      dateISO: satISO,
+      startTime: "08:00",
+      lastStartTime: "17:00",
+      label: "Sat Jamboree",
+      allowedStageTypes: ["JAMBOREE"],
+    },
+    {
+      dateISO: sunISO,
+      startTime: "08:00",
+      lastStartTime: "15:45",
+      label: "Sun Jamboree",
+      allowedStageTypes: ["JAMBOREE"],
+    },
+  ];
+}
+
+function determineJamboreeLocations(normalizedYouthLevel: string) {
+  if (normalizeToken(normalizedYouthLevel) === "MITE") {
+    return ["FIA East", "FIA West"];
+  }
+  return determineRinkLocations(normalizedYouthLevel);
+}
+
 export async function POST(req: Request) {
   const body = await req.json();
 
@@ -56,7 +112,14 @@ export async function POST(req: Request) {
     side: "HOME" | "AWAY";
     date: string;
     teams: TeamInput[];
-    config: GeneratorConfig;
+    config: GeneratorConfig & {
+      stages?: Array<{
+        stageId: string;
+        levelToken: string;
+        gamesPerTeam: number;
+        teamIds: string[];
+      }>;
+    };
   } = body;
 
   if (!name || !youthLevel || !date || !side) {
@@ -78,6 +141,23 @@ export async function POST(req: Request) {
       { ok: false, error: "teams must be an array with at least 2 teams" },
       { status: 400 }
     );
+  }
+
+  if (!config || typeof config !== "object" || !("type" in config)) {
+    return NextResponse.json(
+      { ok: false, error: "config.type is required" },
+      { status: 400 }
+    );
+  }
+
+  if (config.type === "JAMBOREE") {
+    const stages = Array.isArray((config as any).stages) ? (config as any).stages : [];
+    if (stages.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "JAMBOREE requires at least one configured stage." },
+        { status: 400 }
+      );
+    }
   }
 
   let plan: any;
@@ -179,9 +259,13 @@ export async function POST(req: Request) {
         gameType: plan.format,
         label:
           g.stageType === "PLACEMENT"
-            ? getPlacementLabel({ stageType: g.stageType, engineGameId: g.id, label: "" })
+            ? getPlacementLabel({
+                stageType: g.stageType,
+                engineGameId: g.id,
+                label: "",
+              })
             : g.stageType === "JAMBOREE"
-              ? "Jamboree"
+              ? formatJamboreeLabel(g.stageId)
               : "Pool Play",
       })),
     });
@@ -202,9 +286,16 @@ export async function POST(req: Request) {
 
   const { friISO, satISO, sunISO } = parseTournamentWeekendDates(date);
 
-  let dayWindows = buildDefaultWeekendWindows({ friISO, satISO, sunISO });
+  const isJamboree = config.type === "JAMBOREE";
 
-  const locations = determineRinkLocations(normalizedLevel);
+  let dayWindows = isJamboree
+    ? buildJamboreeWeekendWindows({ friISO, satISO, sunISO })
+    : buildDefaultWeekendWindows({ friISO, satISO, sunISO });
+
+  const locations = isJamboree
+    ? determineJamboreeLocations(normalizedLevel)
+    : determineRinkLocations(normalizedLevel);
+
   let slots = generateSlotsMultiDay({ dayWindows, intervalMinutes, locations });
 
   await prisma.bracket.update({
@@ -213,7 +304,7 @@ export async function POST(req: Request) {
       engineConfig: {
         ...(engineConfigToSave as any),
         scheduleDefaults: {
-          kind: "WEEKEND_FRI_SUN_V1",
+          kind: isJamboree ? "MITE_JAMBOREE_WEEKEND_V1" : "WEEKEND_FRI_SUN_V1",
           timezone: "America/Chicago",
           intervalMinutes,
           locations,
@@ -224,6 +315,57 @@ export async function POST(req: Request) {
   });
 
   const origin = new URL(req.url).origin;
+
+  if (isJamboree) {
+    const jamboreeOnlySlots = filterSlotsByAllowedStage(slots as any[], "JAMBOREE");
+
+    const scheduleRes = await fetch(
+      `${origin}/api/brackets/${created.id}/schedule?debug=1`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stageTypes: ["JAMBOREE"],
+          slots: jamboreeOnlySlots,
+        }),
+        cache: "no-store",
+      }
+    );
+
+    const jamboreeSchedule = await scheduleRes
+      .json()
+      .catch(() => ({ ok: false, error: "Failed to parse schedule response" }));
+
+    const sampleStageIds = Array.from(
+      new Set((plan.games as any[]).map((g) => g.stageId).filter(Boolean))
+    ).slice(0, 10);
+
+    return NextResponse.json({
+      ok: true,
+      bracketId: created.id,
+      format: plan.format,
+      savedYouthLevel: youthLevel,
+      savedSide: side,
+      sampleStageIds,
+      savedEngineConfigStageIdLevels: engineConfigToSave.stageIdLevels ?? {},
+      debugPlan: {
+        receivedConfig: config,
+        stageTypeCounts,
+      },
+      autoSchedule: {
+        mode: "JAMBOREE",
+        intervalMinutes,
+        locations,
+        dayWindows,
+        jamboreeSchedule: {
+          ok: !!jamboreeSchedule?.ok,
+          scheduledCount: jamboreeSchedule?.scheduledCount ?? null,
+          unscheduledCount: jamboreeSchedule?.unscheduledCount ?? null,
+          unscheduledDetailed: jamboreeSchedule?.unscheduledDetailed ?? null,
+        },
+      },
+    });
+  }
 
   const poolOnlySlots = filterSlotsByAllowedStage(slots as any[], "POOL_PLAY");
 
