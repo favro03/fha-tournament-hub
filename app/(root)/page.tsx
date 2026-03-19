@@ -37,9 +37,7 @@ function HomeCard({
           {icon}
         </div>
 
-        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200">
-          Tournament Hub
-        </div>
+       
         <h2 className="mt-2 text-2xl font-bold leading-tight">{title}</h2>
         <p className="mt-3 max-w-sm text-sm text-slate-200">{description}</p>
 
@@ -64,9 +62,7 @@ export default function Homepage() {
           <div className="mt-6 rounded-[32px] border border-emerald-400/20 bg-[rgba(6,29,22,0.52)] p-5 shadow-2xl backdrop-blur-sm lg:p-8">
             <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
-                  FHA Tournament Hub
-                </div>
+             
                 <h1 className="mt-2 text-3xl font-bold text-white lg:text-4xl">
                   See what’s happening in the tournament right now.
                 </h1>

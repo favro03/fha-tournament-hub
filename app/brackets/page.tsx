@@ -38,9 +38,7 @@ export default async function PublicBracketsPage(props: {
                   <Trophy className="h-7 w-7" />
                 </div>
 
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
-                  FHA Tournament Hub
-                </div>
+            
 
                 <h1 className="mt-2 text-3xl font-bold text-white lg:text-5xl">
                   Brackets

@@ -17,9 +17,7 @@ const Restaurants = async () => {
                   <UtensilsCrossed className="h-7 w-7" />
                 </div>
 
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
-                  FHA Tournament Hub
-                </div>
+             
 
                 <h1 className="text-3xl font-bold text-white lg:text-5xl">
                   Local Restaurants
