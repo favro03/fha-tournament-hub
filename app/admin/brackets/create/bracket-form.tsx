@@ -111,17 +111,16 @@ function makeBracketFormSchema(mode: BracketFormMode) {
     .object({
       name: z.string().min(1, "Name is required"),
       youthLevel: z.string().min(1, "Division is required"),
-      side: z.enum(["HOME", "AWAY"], {
-        required_error: "Home / Away is required",
-      }),
+      side: z.enum(["HOME", "AWAY"] as const, {
+  message: "Home / Away is required",
+}),
 
       startDate: z.string().min(1, "Start date is required"),
       endDate: z.string().optional(),
 
-      bracketSource: z.enum(["UPLOAD", "BUILD"], {
-        required_error: "Bracket option is required",
-      }),
-
+    bracketSource: z.enum(["UPLOAD", "BUILD"] as const, {
+  message: "Bracket option is required",
+}),
       image: z.string().optional(),
       stageType: z.string().optional(),
 
@@ -767,7 +766,7 @@ export default function BracketForm({
             control={form.control}
             name={countField}
             render={({ field }) => (
-              <FormItem className="max-w-[220px]">
+              <FormItem className="max-w-55">
                 <FormLabel className="text-white/90">Number of teams</FormLabel>
                 <FormControl>
                   <select
