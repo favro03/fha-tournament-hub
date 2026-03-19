@@ -1,4 +1,3 @@
-// lib/tournament-engine/standings/roundRobinStandings.ts
 import type { Game, StandingsRules, TeamInput, Tiebreaker } from "../types";
 
 export type TeamStanding = {
@@ -16,6 +15,13 @@ export type TeamStanding = {
   pim: number;
 };
 
+type FinalTeamVsTeamPoolGame = Game & {
+  status: "FINAL";
+  result: NonNullable<Game["result"]>;
+  home: { type: "TEAM"; teamId: string };
+  away: { type: "TEAM"; teamId: string };
+};
+
 function emptyStanding(teamId: string): TeamStanding {
   return { teamId, gp: 0, w: 0, l: 0, t: 0, pts: 0, gf: 0, ga: 0, pim: 0 };
 }
@@ -24,7 +30,10 @@ function isPoolGame(g: Game, poolId: string) {
   return g.stageType === "POOL_PLAY" && g.stageId === poolId;
 }
 
-function isTeamVsTeamPoolGame(g: Game, poolId: string) {
+function isTeamVsTeamPoolGame(
+  g: Game,
+  poolId: string
+): g is FinalTeamVsTeamPoolGame {
   return (
     isPoolGame(g, poolId) &&
     g.status === "FINAL" &&
@@ -86,14 +95,16 @@ export function computePoolStandings(args: {
       away.l += 1;
 
       const shutout = as === 0;
-      home.pts += rules.points.win + (shutout ? (rules.points.shutoutBonus ?? 0) : 0);
+      home.pts +=
+        rules.points.win + (shutout ? (rules.points.shutoutBonus ?? 0) : 0);
       away.pts += rules.points.loss ?? 0;
     } else if (as > hs) {
       away.w += 1;
       home.l += 1;
 
       const shutout = hs === 0;
-      away.pts += rules.points.win + (shutout ? (rules.points.shutoutBonus ?? 0) : 0);
+      away.pts +=
+        rules.points.win + (shutout ? (rules.points.shutoutBonus ?? 0) : 0);
       home.pts += rules.points.loss ?? 0;
     } else {
       home.t += 1;
@@ -322,7 +333,9 @@ export function rankStandings(args: {
     return a.teamId.localeCompare(b.teamId);
   });
 
-  const pointGroups = partitionEqual(byPoints, (standing) => String(standing.pts));
+  const pointGroups = partitionEqual(byPoints, (standing) =>
+    String(standing.pts)
+  );
 
   return pointGroups.flatMap((group) =>
     group.length > 1
