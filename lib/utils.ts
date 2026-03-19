@@ -56,3 +56,23 @@ export function formatError( error: any) {
   }
 }
 
+// --- Bracket date range helpers ---
+// Your bracket.date is stored like: "2026-02-06 to 2026-02-08"
+// or possibly just: "2026-02-06"
+
+export function parseDateRange(dateStr?: string | null) {
+  const raw = (dateStr ?? "").trim();
+  if (!raw) return { startDate: "", endDate: "" };
+
+  const parts = raw.split(" to ").map((s) => s.trim());
+  return {
+    startDate: parts[0] ?? "",
+    endDate: parts[1] ?? "",
+  };
+}
+
+/** If endDate missing, treat startDate as endDate (1-day tournament) */
+export function getEndDateFromRange(dateStr?: string | null) {
+  const { startDate, endDate } = parseDateRange(dateStr);
+  return (endDate || startDate || "").trim();
+}

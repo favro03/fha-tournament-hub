@@ -1,1191 +1,1276 @@
+"use client";
 
-
-
-'use client'
-import React, { useState } from 'react';
-
-
-import { bracketDefaultValues } from "@/lib/constants";
-import { insertBracketSchema, updateBracketSchema } from "@/lib/validators";
-import { Bracket } from "@/types";
+import React, { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
-import {  SubmitHandler, useForm, useFieldArray } from "react-hook-form";
 import { toast } from "sonner";
-import {z} from "zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import Image from "next/image";
+
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from "@/components/ui/form";
+
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { generatePoolPlayGames, generateBracketGames } from '@/lib/generateGames';
-import { UploadButton } from "@/lib/uploadthing";
 import { Card, CardContent } from "@/components/ui/card";
-import Image from "next/image";
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { UploadButton } from "@/lib/uploadthing";
 
-// Helper to parse date and get day of week
-function getDayOfWeek(dateString: string): string {
-  // Accept formats like 1/1/26, 01/01/2026, 1/1//2026
-  const cleaned = dateString.replace(/\/+/g, '/').replace(/\/+$/, '');
-  const parts = cleaned.split('/');
-  if (parts.length === 3) {
-    const [monthRaw, dayRaw, yearRaw] = parts;
-    const month = monthRaw;
-    const day = dayRaw;
-    let year = yearRaw;
-    if (year.length === 2) year = '20' + year;
-    if (year.length === 0) year = '2026'; // fallback for 1/1//2026
-    const d = new Date(Number(year), Number(month) - 1, Number(day));
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString('en-US', { weekday: 'long' });
-    }
-  }
-  // Try Date.parse fallback
-  const d = new Date(dateString);
-  if (!isNaN(d.getTime())) {
-    return d.toLocaleDateString('en-US', { weekday: 'long' });
-  }
-  return '';
+const YOUTH_LEVELS = [
+  { value: "MITE", label: "Mite" },
+  { value: "SQUIRT", label: "Squirt" },
+  { value: "PEEWEE", label: "Peewee" },
+  { value: "BANTAM", label: "Bantam" },
+] as const;
+
+const BUILD_OPTIONS = [
+  { value: "POOL_BRACKET", label: "Pool Play + Bracket (Placement)" },
+  { value: "JAMBOREE", label: "Jamboree" },
+] as const;
+
+const BRACKET_SIDES = [
+  { value: "HOME", label: "Home" },
+  { value: "AWAY", label: "Away" },
+] as const;
+
+const STANDARD_TEAM_COUNT_OPTIONS = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const JAMBoree_TEAM_COUNT_OPTIONS = [0, 2, 3, 4, 5, 6, 7, 8];
+
+type MiteLevelKey = "miniMite" | "mite1" | "mite2" | "mite3";
+
+const MITE_LEVELS = [
+  {
+    key: "miniMite" as MiteLevelKey,
+    enabledField: "enableMiniMite" as const,
+    countField: "miniMiteTeamCount" as const,
+    teamsField: "miniMiteTeams" as const,
+    stageId: "jamboree:MINI_MITE",
+    levelToken: "MINI_MITE",
+    label: "Mini Mite",
+  },
+  {
+    key: "mite1" as MiteLevelKey,
+    enabledField: "enableMite1" as const,
+    countField: "mite1TeamCount" as const,
+    teamsField: "mite1Teams" as const,
+    stageId: "jamboree:MITE1",
+    levelToken: "MITE1",
+    label: "Mite 1",
+  },
+  {
+    key: "mite2" as MiteLevelKey,
+    enabledField: "enableMite2" as const,
+    countField: "mite2TeamCount" as const,
+    teamsField: "mite2Teams" as const,
+    stageId: "jamboree:MITE2",
+    levelToken: "MITE2",
+    label: "Mite 2",
+  },
+  {
+    key: "mite3" as MiteLevelKey,
+    enabledField: "enableMite3" as const,
+    countField: "mite3TeamCount" as const,
+    teamsField: "mite3Teams" as const,
+    stageId: "jamboree:MITE3",
+    levelToken: "MITE3",
+    label: "Mite 3",
+  },
+] as const;
+
+type BracketFormMode = "create" | "update";
+
+function stringifyPipeTeams(teams: string[]) {
+  return teams.map((t) => t.trim()).filter(Boolean).join("|");
 }
 
+function parsePipeSeparatedTeams(value?: string) {
+  const s = (value ?? "").trim();
+  if (!s) return [];
+  return s
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
 
-const BracketForm = ({type, bracket, bracketId}: {
-    type: 'Create' | 'Update',
-    bracket?: Bracket,
-    bracketId?: string
-}) => {
-    const router = useRouter();
-    // removed unused imageUploading state
+function ensureTeamListSize(existing: string[], targetCount: number, prefix = "Team") {
+  const next = [...existing];
+  while (next.length < targetCount) {
+    next.push(`${prefix}${next.length + 1}`);
+  }
+  return next.slice(0, targetCount);
+}
 
-    // Ensure all times fields are always controlled
-    const safeBracket = bracket && type === 'Update'
-      ? {
-          ...bracket,
-          times: Array.isArray(bracket.times)
-            ? bracket.times.map(ts => ({
-                day: ts.day ?? '',
-                date: ts.date ?? '',
-                timeSlots: ts.timeSlots ?? '',
-                location: ts.location ?? '',
-                gameType: ts.gameType ?? '',
-                type: ts.type ?? '',
-              }))
-            : [],
-          teams: Array.isArray(bracket.teams)
-            ? bracket.teams.map(t => ({ teamName: t.teamName ?? '' }))
-            : [],
-          games: Array.isArray(bracket.games)
-            ? bracket.games.map(g => ({
-                day: g.day ?? '',
-                date: g.date ?? '',
-                time: g.time ?? '',
-                location: g.location ?? '',
-                homeTeam: g.homeTeam ?? '',
-                awayTeam: g.awayTeam ?? '',
-                homeScore: g.homeScore ?? 0,
-                awayScore: g.awayScore ?? 0,
-                homePenalty: g.homePenalty ?? 0,
-                awayPenalty: g.awayPenalty ?? 0,
-                label: g.label ?? '',
-              }))
-            : [],
+function makeBracketFormSchema(mode: BracketFormMode) {
+  return z
+    .object({
+      name: z.string().min(1, "Name is required"),
+      youthLevel: z.string().min(1, "Division is required"),
+      side: z.enum(["HOME", "AWAY"] as const, {
+  message: "Home / Away is required",
+}),
+
+      startDate: z.string().min(1, "Start date is required"),
+      endDate: z.string().optional(),
+
+    bracketSource: z.enum(["UPLOAD", "BUILD"] as const, {
+  message: "Bracket option is required",
+}),
+      image: z.string().optional(),
+      stageType: z.string().optional(),
+
+      guaranteedGamesPerTeam: z.union([z.string(), z.number()]).optional(),
+      standardTeamCount: z.union([z.string(), z.number()]).optional(),
+      standardTeams: z.string().optional(),
+
+      jamboreeGamesPerTeam: z.union([z.string(), z.number()]).optional(),
+
+      enableMiniMite: z.boolean().optional(),
+      enableMite1: z.boolean().optional(),
+      enableMite2: z.boolean().optional(),
+      enableMite3: z.boolean().optional(),
+
+      miniMiteTeamCount: z.union([z.string(), z.number()]).optional(),
+      mite1TeamCount: z.union([z.string(), z.number()]).optional(),
+      mite2TeamCount: z.union([z.string(), z.number()]).optional(),
+      mite3TeamCount: z.union([z.string(), z.number()]).optional(),
+
+      miniMiteTeams: z.string().optional(),
+      mite1Teams: z.string().optional(),
+      mite2Teams: z.string().optional(),
+      mite3Teams: z.string().optional(),
+    })
+    .superRefine((val, ctx) => {
+      if (val.bracketSource === "UPLOAD") {
+        if (!val.image || val.image.trim().length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["image"],
+            message: "Please upload an image or switch to Build.",
+          });
         }
-      : bracketDefaultValues;
+      }
 
-      // Standings calculation helper
-      function calculateStandings(
-        teams: { teamName: string }[],
-        games: { homeTeam: string; awayTeam: string; homeScore?: number; awayScore?: number; homePenalty?: number; awayPenalty?: number; label?: string }[]
-      ) {
-        const standings = teams.map((team, idx) => ({
-          teamName: team.teamName,
-          points: 0,
-          wins: 0,
-          losses: 0,
-          ties: 0,
-          goalsFor: 0,
-          goalsAgainst: 0,
-          penaltyMinutes: 0,
-          idx,
-        }));
-        const poolGames = games.filter(g => g.label === 'Pool Play');
-        poolGames.forEach(game => {
-          const homeIdx = standings.findIndex(t => t.teamName === game.homeTeam);
-          const awayIdx = standings.findIndex(t => t.teamName === game.awayTeam);
-          if (homeIdx === -1 || awayIdx === -1) return;
-          const homeScore = Number(game.homeScore ?? 0);
-          const awayScore = Number(game.awayScore ?? 0);
-          const homePenalty = Number(game.homePenalty ?? 0);
-          const awayPenalty = Number(game.awayPenalty ?? 0);
-          standings[homeIdx].goalsFor += homeScore;
-          standings[homeIdx].goalsAgainst += awayScore;
-          standings[homeIdx].penaltyMinutes += homePenalty;
-          standings[awayIdx].goalsFor += awayScore;
-          standings[awayIdx].goalsAgainst += homeScore;
-          standings[awayIdx].penaltyMinutes += awayPenalty;
-          if (homeScore > awayScore) {
-            standings[homeIdx].wins++;
-            standings[awayIdx].losses++;
-            if (awayScore === 0) {
-              standings[homeIdx].points += 3;
-            } else {
-              standings[homeIdx].points += 2;
-            }
-          } else if (awayScore > homeScore) {
-            standings[awayIdx].wins++;
-            standings[homeIdx].losses++;
-            if (homeScore === 0) {
-              standings[awayIdx].points += 3;
-            } else {
-              standings[awayIdx].points += 2;
-            }
-          } else if (homeScore === awayScore && homeScore !== 0) {
-            standings[homeIdx].ties++;
-            standings[awayIdx].ties++;
-            standings[homeIdx].points += 1;
-            standings[awayIdx].points += 1;
-          }
+      if (val.bracketSource !== "BUILD") return;
+
+      if (!val.stageType || val.stageType.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["stageType"],
+          message: "Please select a build option.",
         });
-        function tiebreaker(
-          a: { teamName: string; points: number; goalsFor: number; goalsAgainst: number; penaltyMinutes: number; },
-          b: { teamName: string; points: number; goalsFor: number; goalsAgainst: number; penaltyMinutes: number; }
-        ) {
-          if (a.points !== b.points) return b.points - a.points;
-          const h2hGame = poolGames.find(g =>
-            (g.homeTeam === a.teamName && g.awayTeam === b.teamName) ||
-            (g.homeTeam === b.teamName && g.awayTeam === a.teamName)
-          );
-          if (h2hGame) {
-            const hHome = h2hGame.homeScore ?? 0;
-            const hAway = h2hGame.awayScore ?? 0;
-            if (h2hGame.homeTeam === a.teamName && hHome > hAway) return -1;
-            if (h2hGame.awayTeam === a.teamName && hAway > hHome) return -1;
-            if (h2hGame.homeTeam === b.teamName && hHome > hAway) return 1;
-            if (h2hGame.awayTeam === b.teamName && hAway > hHome) return 1;
-          }
-          if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
-          if (a.goalsFor !== b.goalsFor) return b.goalsFor - a.goalsFor;
-          if (a.penaltyMinutes !== b.penaltyMinutes) return a.penaltyMinutes - b.penaltyMinutes;
-          return 0;
-        }
-        return [...standings].sort(tiebreaker).map((s, i) => ({ ...s, seed: i + 1 }));
-      }
-
-      function handleApplySeeds(): void {
-        const teams = form.getValues('teams') ?? [];
-        const gamesRaw = form.getValues('games') ?? [];
-        // Ensure homeTeam and awayTeam are always string, not undefined, and cast to correct type
-        const games: { homeTeam: string; awayTeam: string; homeScore?: number; awayScore?: number; homePenalty?: number; awayPenalty?: number; label?: string }[] = gamesRaw.map(g => ({
-          homeTeam: g.homeTeam ?? '',
-          awayTeam: g.awayTeam ?? '',
-          homeScore: g.homeScore,
-          awayScore: g.awayScore,
-          homePenalty: g.homePenalty,
-          awayPenalty: g.awayPenalty,
-          label: g.label
-        }));
-        const standings = calculateStandings(teams, games);
-        // Always use the first 6 teams in standings order for seeds 1-6
-        const bracketGames = games.filter(g => g.label !== 'Pool Play');
-        bracketGames.forEach((game) => {
-          if (game.label === 'Championship') {
-            form.setValue(`games.${games.findIndex(g => g === game)}.homeTeam`, standings[0] ? `Seed 1: ${standings[0].teamName}` : 'Seed 1');
-            form.setValue(`games.${games.findIndex(g => g === game)}.awayTeam`, standings[1] ? `Seed 2: ${standings[1].teamName}` : 'Seed 2');
-          } else if (game.label === '3rd Place') {
-            form.setValue(`games.${games.findIndex(g => g === game)}.homeTeam`, standings[2] ? `Seed 3: ${standings[2].teamName}` : 'Seed 3');
-            form.setValue(`games.${games.findIndex(g => g === game)}.awayTeam`, standings[3] ? `Seed 4: ${standings[3].teamName}` : 'Seed 4');
-          } else if (game.label === 'Consolation') {
-            form.setValue(`games.${games.findIndex(g => g === game)}.homeTeam`, standings[4] ? `Seed 5: ${standings[4].teamName}` : 'Seed 5');
-            form.setValue(`games.${games.findIndex(g => g === game)}.awayTeam`, standings[5] ? `Seed 6: ${standings[5].teamName}` : 'Seed 6');
-          }
-        });
-      }
-    const form = useForm<z.infer<typeof insertBracketSchema>>({
-      resolver:
-        type === 'Update'
-          ? zodResolver(updateBracketSchema)
-          : zodResolver(insertBracketSchema),
-      defaultValues: safeBracket,
-    });
-
-
-    const images = form.watch('image');
-
-
-    // Teams array for team names
-    const { fields: teamFields, replace: replaceTeams } = useFieldArray({
-      control: form.control,
-      name: 'teams',
-    });
-
-    // Games array for both main and pool play games
-    const { fields: gameFields,  } = useFieldArray({
-      control: form.control,
-      name: 'games',
-    });
-
-    // Time slots array
-    const { fields: timeFields, replace: replaceTimes, remove: removeTime } = useFieldArray({
-      control: form.control,
-      name: 'times'
-    });
-    // State for bracket generation dialog
-    const [showBracketDialog, setShowBracketDialog] = useState(false);
-    const [gamesPerTeam, setGamesPerTeam] = useState(1);
-    const [generating, setGenerating] = useState(false);
-
-    const onSubmit: SubmitHandler<z.infer<typeof insertBracketSchema>> = async (values) => {
-      // Only use games array, no poolGames
-      if (type === 'Create') {
-        const { createBracket } = await import('@/lib/actions/brackets.actions');
-        const res = await createBracket(values);
-        if (!res.success) {
-          toast.error(res.message);
-        } else {
-          toast.success(res.message);
-          router.push('/admin/brackets');
-        }
-      }
-      if (type === 'Update' && bracketId) {
-        const { updateBracket } = await import('@/lib/actions/brackets.actions');
-        const res = await updateBracket(bracketId, values);
-        if (!res.success) {
-          toast.error(res.message);
-        } else {
-          toast.success(res.message);
-          router.push('/admin/brackets');
-        }
-      }
-    };
-
-    // Handler for Generate Bracket button
-    const handleGenerateBracket = () => {
-      setShowBracketDialog(true);
-    };
-
-    // Handler for confirming number of games per team
-    const handleConfirmGamesPerTeam = () => {
-      setShowBracketDialog(false);
-      setGenerating(true);
-      const teams = form.getValues('teams') ?? [];
-      const times = form.getValues('times') ?? [];
-      let poolGames = [];
-      try {
-        poolGames = generatePoolPlayGames(teams, times, gamesPerTeam);
-      } catch (err: unknown) {
-        setGenerating(false);
-        let errorMsg = 'Unknown error';
-        if (err instanceof Error) {
-          errorMsg = err.message;
-        } else if (typeof err === 'string') {
-          errorMsg = err;
-        }
-        toast.error(`Unable to generate pool play games: ${errorMsg}`);
         return;
       }
-      // Generate bracket games (seed placeholders)
-      const bracketGames = generateBracketGames(times, teams.length);
-      // Set games in form (pool play first, then bracket games)
-      form.setValue('games', [...poolGames, ...bracketGames]);
-      setGenerating(false);
-    };
+
+      if (mode !== "create") return;
+
+      if (val.stageType === "POOL_BRACKET") {
+        const countRaw = val.standardTeamCount;
+        const count =
+          typeof countRaw === "number"
+            ? countRaw
+            : Number(String(countRaw ?? "").trim());
+
+        const teams = parsePipeSeparatedTeams(val.standardTeams);
+
+        if (!Number.isFinite(count) || count < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["standardTeamCount"],
+            message: "Select at least 2 teams.",
+          });
+        }
+
+        if (teams.length < count) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["standardTeams"],
+            message: "One or more team names are missing.",
+          });
+        }
+
+        if (teams.some((t) => !t.trim())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["standardTeams"],
+            message: "Team names cannot be blank.",
+          });
+        }
+
+        const gRaw = val.guaranteedGamesPerTeam;
+        const g =
+          typeof gRaw === "number" ? gRaw : Number(String(gRaw ?? "").trim());
+
+        if (!Number.isFinite(g) || g < 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["guaranteedGamesPerTeam"],
+            message: "Select guaranteed pool games per team.",
+          });
+        } else if (Number.isFinite(count) && count >= 2 && g > count - 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["guaranteedGamesPerTeam"],
+            message: `Guaranteed games per team cannot exceed ${count - 1} for ${count} teams.`,
+          });
+        }
+
+        return;
+      }
+
+      if (val.stageType === "JAMBOREE") {
+        const enabledLevels = [
+          {
+            enabled: !!val.enableMiniMite,
+            countRaw: val.miniMiteTeamCount,
+            path: "miniMiteTeams" as const,
+            label: "Mini Mite",
+            teams: parsePipeSeparatedTeams(val.miniMiteTeams),
+          },
+          {
+            enabled: !!val.enableMite1,
+            countRaw: val.mite1TeamCount,
+            path: "mite1Teams" as const,
+            label: "Mite 1",
+            teams: parsePipeSeparatedTeams(val.mite1Teams),
+          },
+          {
+            enabled: !!val.enableMite2,
+            countRaw: val.mite2TeamCount,
+            path: "mite2Teams" as const,
+            label: "Mite 2",
+            teams: parsePipeSeparatedTeams(val.mite2Teams),
+          },
+          {
+            enabled: !!val.enableMite3,
+            countRaw: val.mite3TeamCount,
+            path: "mite3Teams" as const,
+            label: "Mite 3",
+            teams: parsePipeSeparatedTeams(val.mite3Teams),
+          },
+        ].filter((x) => x.enabled);
+
+        if (enabledLevels.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["stageType"],
+            message: "Enable at least one mite level for the jamboree.",
+          });
+        }
+
+        for (const level of enabledLevels) {
+          const count =
+            typeof level.countRaw === "number"
+              ? level.countRaw
+              : Number(String(level.countRaw ?? "").trim());
+
+          if (!Number.isFinite(count) || count < 2) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [level.path],
+              message: `${level.label} needs at least 2 teams.`,
+            });
+            continue;
+          }
+
+          if (level.teams.length < count) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [level.path],
+              message: `${level.label} is missing one or more team names.`,
+            });
+          }
+
+          if (level.teams.some((t) => !t.trim())) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [level.path],
+              message: `${level.label} has a blank team name.`,
+            });
+          }
+        }
+
+        const gRaw = val.jamboreeGamesPerTeam;
+        const g =
+          typeof gRaw === "number" ? gRaw : Number(String(gRaw ?? "").trim());
+
+        if (!Number.isFinite(g) || g < 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["jamboreeGamesPerTeam"],
+            message: "Enter games per team for the mite jamboree.",
+          });
+        }
+      }
+    });
+}
+
+type FormValues = z.infer<ReturnType<typeof makeBracketFormSchema>>;
+
+export type BracketFormInitial = {
+  id?: number;
+  name?: string | null;
+  youthLevel?: string | null;
+  date?: string | null;
+  image?: string | null;
+  tournamentFormat?: string | null;
+  side?: "HOME" | "AWAY" | null;
+};
+
+function makeDateRange(start?: string, end?: string) {
+  const s = (start ?? "").trim();
+  const e = (end ?? "").trim();
+  if (!s) return "";
+  return e && e !== s ? `${s} to ${e}` : s;
+}
+
+function parseDateRange(dateStr?: string | null) {
+  const raw = (dateStr ?? "").trim();
+  if (!raw) return { startDate: "", endDate: "" };
+
+  const parts = raw.split(" to ").map((s) => s.trim());
+  return {
+    startDate: parts[0] ?? "",
+    endDate: parts[1] ?? "",
+  };
+}
+
+function inferBracketSource(initial?: BracketFormInitial) {
+  const img = (initial?.image ?? "").trim();
+  return img.length > 0 ? "UPLOAD" : "BUILD";
+}
+
+function inferStageType(initial?: BracketFormInitial) {
+  if (initial?.tournamentFormat === "JAMBOREE") return "JAMBOREE";
+  return "POOL_BRACKET";
+}
+
+const selectClassName =
+  "block h-11 w-full rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-2 text-sm text-white shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20";
+
+const toggleBaseClass =
+  "rounded-md border px-3 py-2 text-sm font-medium transition-colors";
+
+function buildJamboreePayload(values: FormValues) {
+  const gamesRaw = values.jamboreeGamesPerTeam;
+  const gamesPerTeam =
+    typeof gamesRaw === "number"
+      ? gamesRaw
+      : Number(String(gamesRaw ?? "").trim());
+
+  const selectedLevels = MITE_LEVELS.filter((level) => {
+    return Boolean(values[level.enabledField]);
+  });
+
+  const teams: Array<{ id: string; name: string }> = [];
+  const stages: Array<{
+    stageId: string;
+    levelToken: string;
+    gamesPerTeam: number;
+    teamIds: string[];
+  }> = [];
+
+  for (const level of selectedLevels) {
+    const teamNames = parsePipeSeparatedTeams(String(values[level.teamsField] ?? ""));
+    const teamIds: string[] = [];
+
+    for (const teamName of teamNames) {
+      const teamId = `${level.levelToken.toLowerCase()}_${teamIds.length + 1}`;
+      teamIds.push(teamId);
+      teams.push({
+        id: teamId,
+        name: teamName,
+      });
+    }
+
+    if (teamIds.length >= 2) {
+      stages.push({
+        stageId: level.stageId,
+        levelToken: level.levelToken,
+        gamesPerTeam,
+        teamIds,
+      });
+    }
+  }
+
+  return { gamesPerTeam, teams, stages };
+}
+
+function buildStandardPayload(values: FormValues) {
+  const teamNames = parsePipeSeparatedTeams(values.standardTeams);
+  const teams = teamNames.map((name, idx) => ({
+    id: `t${idx + 1}`,
+    name,
+  }));
+
+  const nTeams = teams.length;
+
+  const guaranteedRaw = values.guaranteedGamesPerTeam;
+  const gamesPerTeam =
+    typeof guaranteedRaw === "number"
+      ? guaranteedRaw
+      : Number(String(guaranteedRaw ?? "").trim());
+
+  const placementGames =
+    nTeams >= 6
+      ? [
+          { type: "CHAMPIONSHIP" },
+          { type: "THIRD_PLACE" },
+          { type: "FIFTH_PLACE" },
+        ]
+      : nTeams >= 4
+        ? [{ type: "CHAMPIONSHIP" }, { type: "THIRD_PLACE" }]
+        : [{ type: "CHAMPIONSHIP" }];
+
+  return {
+    teams,
+    config: {
+      type: "ROUND_ROBIN",
+      gamesPerTeam: Number.isFinite(gamesPerTeam) ? gamesPerTeam : undefined,
+      placementGames,
+    },
+  };
+}
+
+export default function BracketForm({
+  mode = "create",
+  initial,
+}: {
+  mode?: BracketFormMode;
+  initial?: BracketFormInitial;
+}) {
+  const router = useRouter();
+  const [isSaving, setIsSaving] = useState(false);
+
+  const bracketFormSchema = useMemo(() => makeBracketFormSchema(mode), [mode]);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(bracketFormSchema),
+    defaultValues: {
+      name: "",
+      youthLevel: "",
+      side: "HOME",
+      startDate: "",
+      endDate: "",
+      bracketSource: "BUILD",
+      image: "",
+      stageType: "",
+      guaranteedGamesPerTeam: "3",
+      standardTeamCount: 4,
+      standardTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+
+      jamboreeGamesPerTeam: "3",
+      enableMiniMite: true,
+      enableMite1: true,
+      enableMite2: true,
+      enableMite3: true,
+
+      miniMiteTeamCount: 4,
+      mite1TeamCount: 4,
+      mite2TeamCount: 4,
+      mite3TeamCount: 4,
+
+      miniMiteTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite1Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite2Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite3Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+    },
+  });
+
+  useEffect(() => {
+    if (!initial) return;
+
+    const { startDate, endDate } = parseDateRange(initial.date);
+    const bracketSource = inferBracketSource(initial);
+    const stageType = inferStageType(initial);
+
+    form.reset({
+      name: initial.name ?? "",
+      youthLevel: initial.youthLevel ?? "",
+      side: initial.side === "AWAY" ? "AWAY" : "HOME",
+      startDate: startDate ?? "",
+      endDate: endDate ?? "",
+      bracketSource: bracketSource as "UPLOAD" | "BUILD",
+      image: initial.image ?? "",
+      stageType: stageType ?? "",
+      guaranteedGamesPerTeam: "3",
+      standardTeamCount: 4,
+      standardTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+
+      jamboreeGamesPerTeam: "3",
+      enableMiniMite: true,
+      enableMite1: true,
+      enableMite2: true,
+      enableMite3: true,
+
+      miniMiteTeamCount: 4,
+      mite1TeamCount: 4,
+      mite2TeamCount: 4,
+      mite3TeamCount: 4,
+
+      miniMiteTeams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite1Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite2Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+      mite3Teams: stringifyPipeTeams(["Team1", "Team2", "Team3", "Team4"]),
+    });
+  }, [initial, form]);
+
+  const bracketSource = form.watch("bracketSource");
+  const images = form.watch("image");
+  const stageType = form.watch("stageType");
+
+  const standardTeamCount = Number(form.watch("standardTeamCount") ?? 0);
+
+  const enableMiniMite = form.watch("enableMiniMite");
+  const enableMite1 = form.watch("enableMite1");
+  const enableMite2 = form.watch("enableMite2");
+  const enableMite3 = form.watch("enableMite3");
+
+  useEffect(() => {
+    if (stageType === "JAMBOREE" && form.getValues("youthLevel") !== "MITE") {
+      form.setValue("youthLevel", "MITE", {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [stageType, form]);
+
+  const submitLabel = useMemo(() => {
+    if (isSaving) return mode === "update" ? "Updating..." : "Creating...";
+    return mode === "update" ? "Update Bracket" : "Create Bracket";
+  }, [mode, isSaving]);
+
+  const syncGeneratedTeamInputs = (
+    teamsField:
+      | "standardTeams"
+      | "miniMiteTeams"
+      | "mite1Teams"
+      | "mite2Teams"
+      | "mite3Teams",
+    targetCount: number
+  ) => {
+    const existing = parsePipeSeparatedTeams(String(form.getValues(teamsField) ?? ""));
+    const next = ensureTeamListSize(existing, targetCount, "Team");
+    form.setValue(teamsField, stringifyPipeTeams(next), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
+
+  const onSubmit = async (values: FormValues) => {
+    if (isSaving) return;
+
+    try {
+      setIsSaving(true);
+
+      const date = makeDateRange(values.startDate, values.endDate);
+
+      if (mode === "update") {
+        if (!initial?.id) throw new Error("Missing bracket id for update");
+
+        const payload = {
+          name: values.name,
+          youthLevel:
+            values.stageType === "JAMBOREE" ? "MITE" : values.youthLevel,
+          side: values.side,
+          date,
+          image: values.bracketSource === "UPLOAD" ? values.image : "",
+          tournamentFormat:
+            values.bracketSource === "UPLOAD"
+              ? "IMAGE_UPLOAD"
+              : values.stageType === "JAMBOREE"
+                ? "JAMBOREE"
+                : "POOL_PLACEMENT",
+        };
+
+        const res = await fetch(`/api/brackets/${initial.id}/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error ?? "Failed to update bracket");
+        }
+
+        toast.success("Bracket updated!");
+        router.refresh();
+        return;
+      }
+
+      if (values.bracketSource === "UPLOAD") {
+        const payload = {
+          name: values.name,
+          youthLevel: values.youthLevel,
+          side: values.side,
+          date,
+          image: values.image,
+        };
+
+        const res = await fetch("/api/brackets/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error ?? "Failed to create bracket (upload)");
+        }
+
+        toast.success("Bracket created!");
+        router.push("/admin/brackets");
+        return;
+      }
+
+      let payload: any;
+
+      if (values.stageType === "JAMBOREE") {
+        const jamboree = buildJamboreePayload(values);
+
+        payload = {
+          name: values.name,
+          youthLevel: "MITE",
+          side: values.side,
+          date,
+          teams: jamboree.teams,
+          config: {
+            type: "JAMBOREE",
+            gamesPerTeam: jamboree.gamesPerTeam,
+            stages: jamboree.stages,
+          },
+        };
+      } else {
+        const standard = buildStandardPayload(values);
+
+        payload = {
+          name: values.name,
+          youthLevel: values.youthLevel,
+          side: values.side,
+          date,
+          teams: standard.teams,
+          config: standard.config,
+        };
+      }
+
+      const res = await fetch("/api/brackets/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to generate bracket");
+      }
+
+      const data = await res.json();
+      toast.success(`Bracket generated! (id: ${data.bracketId})`);
+      router.push("/admin/brackets");
+    } catch (err) {
+      if (err instanceof Error) toast.error(err.message);
+      else toast.error("Error saving bracket");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const renderStandardGeneratedTeamInputs = () => {
+    const names = parsePipeSeparatedTeams(String(form.watch("standardTeams") ?? ""));
+
+    if (names.length === 0) {
+      return (
+        <p className="text-sm text-white/50">
+          Select a team count to generate team name fields.
+        </p>
+      );
+    }
 
     return (
-      <Form {...form}>
-        <form method="POST" onSubmit={form.handleSubmit(onSubmit as SubmitHandler<Record<string, unknown>>)} className="space-y-8">
-          <div className="flex flex-col gap-5 md:flex-row md:items-start">
-            {/* Name */}
-            <FormField
-              control={form.control}
-              name='name'
-              render={({ field }) => (
-                <FormItem className='w-full'>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder='Enter bracket name' {...field} value={field.value ?? ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {/* Division */}
-            <FormField
-              control={form.control}
-              name='youthLevel'
-              render={({ field }) => (
-                <FormItem className='w-full'>
-                  <FormLabel>Division</FormLabel>
-                  <FormControl>
-                    <Input placeholder='Enter division (Mite, Squirt, Peewee, Bantam)' {...field} value={field.value ?? ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {names.map((name, idx) => (
+          <div key={`standard-${idx}`} className="space-y-1">
+            <label className="text-xs font-medium text-white/70">
+              Team {idx + 1}
+            </label>
+            <Input
+              value={name}
+              onChange={(e) => {
+                const current = parsePipeSeparatedTeams(
+                  String(form.getValues("standardTeams") ?? "")
+                );
+                current[idx] = e.target.value;
+                form.setValue("standardTeams", stringifyPipeTeams(current), {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+              }}
             />
           </div>
-          {/* Date */}
+        ))}
+      </div>
+    );
+  };
+
+  const renderMiteLevelCard = (
+    title: string,
+    enabledField:
+      | "enableMiniMite"
+      | "enableMite1"
+      | "enableMite2"
+      | "enableMite3",
+    countField:
+      | "miniMiteTeamCount"
+      | "mite1TeamCount"
+      | "mite2TeamCount"
+      | "mite3TeamCount",
+    teamsField: "miniMiteTeams" | "mite1Teams" | "mite2Teams" | "mite3Teams",
+    enabled: boolean | undefined
+  ) => {
+    const names = parsePipeSeparatedTeams(String(form.watch(teamsField) ?? ""));
+
+    return (
+      <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold">{title}</h3>
+              <p className="text-sm text-white/70">
+                Pick how many teams are in this level, then edit the generated names.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 pt-1 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={!!enabled}
+                onChange={(e) =>
+                  form.setValue(enabledField, e.target.checked, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                className="h-4 w-4 rounded border border-emerald-500/50 bg-transparent"
+              />
+              Include
+            </label>
+          </div>
+
           <FormField
             control={form.control}
-            name='date'
+            name={countField}
             render={({ field }) => (
-              <FormItem className='w-full'>
-                <FormLabel>Date</FormLabel>
+              <FormItem className="max-w-55">
+                <FormLabel className="text-white/90">Number of teams</FormLabel>
                 <FormControl>
-                  <Input placeholder='Enter date (Month d-d year)' {...field} value={field.value ?? ""} />
+                  <select
+                    value={String(field.value ?? 0)}
+                    disabled={!enabled}
+                    className={selectClassName}
+                    onChange={(e) => {
+                      const count = Number(e.target.value);
+                      field.onChange(count);
+                      syncGeneratedTeamInputs(teamsField, count);
+                    }}
+                  >
+                    {JAMBoree_TEAM_COUNT_OPTIONS.map((count) => (
+                      <option
+                        key={count}
+                        value={count}
+                        className="bg-[#102317] text-white"
+                      >
+                        {count === 0 ? "Select count" : count}
+                      </option>
+                    ))}
+                  </select>
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          {/* Image Upload */}
-          <div className="upload-field flex flex-col gap-5 md:flex-row ">
-            <FormField
-              control={form.control}
-              name='image'
-              render={() => (
-                <FormItem className='w-full'>
-                  <FormLabel>Image</FormLabel>
-                  <Card>
-                    <CardContent className="space-y-2 mt-2 min-h-48">
-                      <div className="flex-start space-x-2">
-                        {images && (
-                          <Image src={images} alt="bracket image" className="w-20 h-20 object-cover object-center rounded-sm" width={100} height={100}/>
-                        )}
-                        <FormControl>
-                          <UploadButton endpoint='imageUploader' onClientUploadComplete={(res: {ufsUrl: string}[]) => {
-                            form.setValue('image', res[0].ufsUrl)
+          <FormField
+            control={form.control}
+            name={teamsField}
+            render={() => (
+              <FormItem>
+                <FormLabel className="text-white/90">{title} teams</FormLabel>
+                <FormControl>
+                  <div className="rounded-md border border-emerald-900/70 bg-[#102317] p-4">
+                    {!enabled ? (
+                      <p className="text-sm text-white/50">
+                        Turn on this level to enter teams.
+                      </p>
+                    ) : names.length === 0 ? (
+                      <p className="text-sm text-white/50">
+                        Select a team count to generate team name fields.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {names.map((name, idx) => (
+                          <div key={`${teamsField}-${idx}`} className="space-y-1">
+                            <label className="text-xs font-medium text-white/70">
+                              Team {idx + 1}
+                            </label>
+                            <Input
+                              value={name}
+                              disabled={!enabled}
+                              onChange={(e) => {
+                                const current = parsePipeSeparatedTeams(
+                                  String(form.getValues(teamsField) ?? "")
+                                );
+                                current[idx] = e.target.value;
+                                form.setValue(
+                                  teamsField,
+                                  stringifyPipeTeams(current),
+                                  {
+                                    shouldDirty: true,
+                                    shouldValidate: true,
+                                  }
+                                );
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 text-white">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem className="w-full md:col-span-2">
+                <FormLabel className="text-white">Tournament / Bracket Name</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="Enter tournament name"
+                    {...field}
+                    value={field.value ?? ""}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="youthLevel"
+            render={({ field }) => (
+              <FormItem className="w-full">
+                <FormLabel className="text-white">Division</FormLabel>
+                <FormControl>
+                  <select
+                    {...field}
+                    value={field.value ?? ""}
+                    disabled={stageType === "JAMBOREE"}
+                    className={selectClassName}
+                  >
+                    <option value="">Select division</option>
+                    {YOUTH_LEVELS.map((opt) => (
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        className="bg-[#102317] text-white"
+                      >
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormControl>
+                {stageType === "JAMBOREE" ? (
+                  <p className="text-xs text-white/60">
+                    Mite jamborees are saved under the MITE division and use separate Mini
+                    Mite / Mite 1 / Mite 2 / Mite 3 groupings.
+                  </p>
+                ) : null}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          <FormField
+            control={form.control}
+            name="side"
+            render={({ field }) => (
+              <FormItem className="w-full">
+                <FormLabel className="text-white">Tournament Side</FormLabel>
+                <FormControl>
+                  <select
+                    {...field}
+                    value={field.value ?? "HOME"}
+                    className={selectClassName}
+                  >
+                    {BRACKET_SIDES.map((opt) => (
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        className="bg-[#102317] text-white"
+                      >
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="startDate"
+            render={({ field }) => (
+              <FormItem className="w-full">
+                <FormLabel className="text-white">Start Date</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} value={field.value ?? ""} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="endDate"
+            render={({ field }) => (
+              <FormItem className="w-full">
+                <FormLabel className="text-white">End Date (optional)</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} value={field.value ?? ""} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="bracketSource"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-white">Bracket Option</FormLabel>
+              <FormControl>
+                <div className="flex flex-col gap-2 md:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => field.onChange("BUILD")}
+                    className={[
+                      toggleBaseClass,
+                      field.value === "BUILD"
+                        ? "border-emerald-400/60 bg-emerald-500/20 text-white"
+                        : "border-emerald-900/70 bg-[#0f2217] text-white/80 hover:bg-emerald-950/50",
+                    ].join(" ")}
+                  >
+                    Build with Engine
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => field.onChange("UPLOAD")}
+                    className={[
+                      toggleBaseClass,
+                      field.value === "UPLOAD"
+                        ? "border-emerald-400/60 bg-emerald-500/20 text-white"
+                        : "border-emerald-900/70 bg-[#0f2217] text-white/80 hover:bg-emerald-950/50",
+                    ].join(" ")}
+                  >
+                    Upload Bracket Image
+                  </button>
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {bracketSource === "UPLOAD" ? (
+          <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+            <CardContent className="space-y-4 p-5">
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold">Upload bracket image</h3>
+                <p className="text-sm text-white/70">
+                  Use this if you want the public bracket page to show your uploaded image
+                  instead of generated standings/bracket logic.
+                </p>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="image"
+                render={() => (
+                  <FormItem>
+                    <FormLabel className="text-white">Bracket Image</FormLabel>
+                    <FormControl>
+                      <div className="space-y-4">
+                        <UploadButton
+                          endpoint="imageUploader"
+                          onClientUploadComplete={(res) => {
+                            const url = res?.[0]?.url ?? "";
+                            form.setValue("image", url, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                            toast.success("Image uploaded!");
                           }}
                           onUploadError={(error: Error) => {
-                            toast.error(`ERROR! ${error.message}`)
+                            toast.error(error.message);
                           }}
-                          />
-                        </FormControl>
+                        />
+                        {images ? (
+                          <div className="overflow-hidden rounded-lg border border-emerald-900/70">
+                            <Image
+                              src={images}
+                              alt="Bracket preview"
+                              width={1200}
+                              height={900}
+                              className="h-auto w-full object-contain"
+                            />
+                          </div>
+                        ) : null}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            <FormField
+              control={form.control}
+              name="stageType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-white">Build Format</FormLabel>
+                  <FormControl>
+                    <select
+                      {...field}
+                      value={field.value ?? ""}
+                      className={selectClassName}
+                    >
+                      <option value="">Select build format</option>
+                      {BUILD_OPTIONS.map((opt) => (
+                        <option
+                          key={opt.value}
+                          value={opt.value}
+                          className="bg-[#102317] text-white"
+                        >
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-          </div>
-<FormField
-  control={form.control}
-  name="bracketName"
-  render={({ field }) => (
-    <FormItem className="flex flex-row items-center gap-2">
-      <FormLabel>Build your own bracket</FormLabel>
-      <FormControl>
-        <select
-          className="border rounded px-3 py-2"
-          value={field.value ?? ""}
-          onChange={e => field.onChange(e.target.value)}
-        >
-          <option value="">Select...</option>
-          <option value="Jamboree">Jamboree</option>
-          <option value="Single Elimination + Consolation">Single Elimination + Consolation</option>
-          <option value="Pool Play + Championship Bracket">Pool Play + Championship Bracket</option>
-        </select>
-      </FormControl>
-      <FormMessage />
-    </FormItem>
-  )}
-/>
 
-          {/* Accordion for bracket sections */}
-          <Accordion type="multiple" className="mt-4" defaultValue={["teams","times","pool-play","bracket-play"]}>
-            {/* Select number of teams */}
-            {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
-              <AccordionItem value="teams">
-                <AccordionTrigger>Select number of teams in tournament</AccordionTrigger>
-                <AccordionContent>
-                  <div className="flex flex-col gap-4">
-                    <select
-                      id="numTeams"
-                      className="border rounded px-3 py-2 w-40"
-                      value={teamFields.length || ''}
-                      onChange={e => {
-                        const num = parseInt(e.target.value, 10);
-                        if (!isNaN(num)) {
-                          replaceTeams(Array.from({ length: num }, () => ({ teamName: '' })));
-                        } else {
-                          replaceTeams([]);
-                        }
-                      }}
-                    >
-                      <option value="">Select...</option>
-                      {Array.from({ length: 59 }, (_, i) => i + 2).map(n => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                    {/* Team name inputs */}
-                    {teamFields.length >= 2 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {teamFields.map((field, idx) => (
-                          <FormField
-                            key={field.id}
-                            control={form.control}
-                            name={`teams.${idx}.teamName`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Team {idx + 1} Name</FormLabel>
-                                <FormControl>
-                                  <Input {...field} placeholder={`Enter team ${idx + 1} name`} value={field.value ?? ""} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        ))}
-                      </div>
-                    )}
+            {stageType === "POOL_BRACKET" ? (
+              <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+                <CardContent className="space-y-5 p-5">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-semibold">Pool play + placement setup</h3>
+                    <p className="text-sm text-white/70">
+                      Choose games per team, choose team count, then edit the generated
+                      team names.
+                    </p>
                   </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
 
-            {/* Select number of time slots */}
-            {form.watch('bracketName') === 'Pool Play + Championship Bracket' && (
-              <AccordionItem value="times">
-                <AccordionTrigger>Select number of time slots</AccordionTrigger>
-                <AccordionContent>
-                  <div className="flex flex-col gap-4">
-                    <select
-                      id="numTimes"
-                      className="border rounded px-3 py-2 w-40"
-                      value={timeFields.length || ''}
-                      onChange={e => {
-                        const num = parseInt(e.target.value, 10);
-                        if (!isNaN(num)) {
-                          replaceTimes(Array.from({ length: num }, () => ({ day: '', date: '', timeSlots: '', location: '' })));
-                        } else {
-                          replaceTimes([]);
-                        }
-                      }}
-                    >
-                      <option value="">Select...</option>
-                      {Array.from({ length: 99 }, (_, i) => i + 2).map(n => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                    {/* Time slot inputs */}
-                    {timeFields.length >= 2 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {timeFields.map((field, idx) => (
-                          <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                            <div className="font-semibold mb-2">Game {idx + 1}</div>
-                            {/* ...existing code for time slot fields... */}
-                            <FormField
-                              control={form.control}
-                              name={`times.${idx}.date`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Date</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      {...field}
-                                      placeholder={`Enter date`}
-                                      value={field.value ?? ""}
-                                      onChange={e => {
-                                        field.onChange(e);
-                                        const day = getDayOfWeek(e.target.value);
-                                        form.setValue(`times.${idx}.day`, day);
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="guaranteedGamesPerTeam"
+                      render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                          <FormLabel className="text-white">
+                            Guaranteed pool games per team
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={1}
+                              {...field}
+                              value={field.value ?? "3"}
                             />
-                            <FormField
-                              control={form.control}
-                              name={`times.${idx}.day`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Day</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder={`Enter day`} value={field.value ?? ""} readOnly />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`times.${idx}.timeSlots`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Time</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder={`Enter time`} value={field.value ?? ""} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`times.${idx}.location`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Location</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder={`Enter location`} value={field.value ?? ""} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <div className="flex gap-4 items-center mt-2">
-                              <FormField
-                                control={form.control}
-                                name={`times.${idx}.gameType`}
-                                render={({ field }) => (
-                                  <FormItem className="flex flex-row items-center gap-2">
-                                    <FormLabel>Game Type</FormLabel>
-                                    <FormControl>
-                                      <select
-                                        className="border rounded px-3 py-2"
-                                        value={field.value ?? ""}
-                                        onChange={e => field.onChange(e.target.value)}
-                                      >
-                                        <option value="">Select...</option>
-                                        <option value="bracketPlay">Bracket Play</option>
-                                        <option value="poolPlay">Pool Play</option>
-                                      </select>
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                            {/* Only show type if gameType is bracketPlay */}
-                            {form.watch(`times.${idx}.gameType`) === 'bracketPlay' && (
-                              <FormField
-                                control={form.control}
-                                name={`times.${idx}.type`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Type</FormLabel>
-                                    <FormControl>
-                                      <select
-                                        className="border rounded px-3 py-2"
-                                        value={field.value ?? ""}
-                                        onChange={e => field.onChange(e.target.value)}
-                                      >
-                                        <option value="">Select...</option>
-                                        <option value="Consolation">Consolation</option>
-                                        <option value="3rd Place">3rd Place</option>
-                                        <option value="Championship">Championship</option>
-                                      </select>
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-                            <Button type="button" variant="destructive" size="sm" className="absolute top-2 right-2" onClick={() => removeTime(idx)}>
-                              Remove
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-
-            {/* Pool Play Section */}
-            {gameFields.filter(g => g.label === 'Pool Play').length > 0 && (
-              <AccordionItem value="pool-play">
-                <AccordionTrigger>Pool Play</AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-4">
-                    {gameFields.filter(g => g.label === 'Pool Play').map((field) => {
-                      const gameIdx = gameFields.findIndex(f => f.id === field.id);
-                      return (
-                        <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                            {/* ...existing code for pool play fields... */}
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.day`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Day</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Day" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.date`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Date</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Date" value={field.value ?? ''} onChange={e => {
-                                      field.onChange(e);
-                                      const day = getDayOfWeek(e.target.value);
-                                      form.setValue(`games.${gameIdx}.day`, day);
-                                    }} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.time`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Time</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Time" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.location`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Location</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Location" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.homeTeam`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Home Team</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Home Team" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.awayTeam`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Away Team</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Away Team" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.homeScore`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Home Score</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      {...field}
-                                      placeholder="Home Score"
-                                      value={field.value ?? ''}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        field.onChange(val === '' ? '' : Number(val));
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.awayScore`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Away Score</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      {...field}
-                                      placeholder="Away Score"
-                                      value={field.value ?? ''}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        field.onChange(val === '' ? '' : Number(val));
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.homePenalty`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Home Penalty (min)</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="any"
-                                      {...field}
-                                      placeholder="Home Penalty"
-                                      value={field.value ?? ''}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        field.onChange(val === '' ? '' : parseFloat(val));
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.awayPenalty`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Away Penalty (min)</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="any"
-                                      {...field}
-                                      placeholder="Away Penalty"
-                                      value={field.value ?? ''}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        field.onChange(val === '' ? '' : parseFloat(val));
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-
-              {/* Standings Section */}
-              {gameFields.filter(g => g.label === 'Pool Play').length > 0 && (
-                <AccordionItem value="standings">
-                  <AccordionTrigger>Standings</AccordionTrigger>
-                  <AccordionContent>
-                    {(() => {
-                      const teams = form.getValues('teams') ?? [];
-                      const gamesRaw = form.getValues('games') ?? [];
-                      const games = gamesRaw.map(g => ({
-                        homeTeam: g.homeTeam ?? '',
-                        awayTeam: g.awayTeam ?? '',
-                        homeScore: g.homeScore,
-                        awayScore: g.awayScore,
-                        homePenalty: g.homePenalty,
-                        awayPenalty: g.awayPenalty,
-                        label: g.label
-                      }));
-                      const standings = calculateStandings(teams, games);
-                      return (
-                        <div className="space-y-4">
-                          <table className="min-w-full border text-sm">
-                            <thead>
-                              <tr className="bg-gray-100">
-                                <th className="border px-2 py-1">Seed</th>
-                                <th className="border px-2 py-1">Team</th>
-                                <th className="border px-2 py-1">Points</th>
-                                <th className="border px-2 py-1">W</th>
-                                <th className="border px-2 py-1">L</th>
-                                <th className="border px-2 py-1">T</th>
-                                <th className="border px-2 py-1">GF</th>
-                                <th className="border px-2 py-1">GA</th>
-                                <th className="border px-2 py-1">PIM</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {standings.map(team => (
-                                <tr key={team.teamName}>
-                                  <td className="border px-2 py-1">{team.seed}</td>
-                                  <td className="border px-2 py-1">{team.teamName}</td>
-                                  <td className="border px-2 py-1">{team.points}</td>
-                                  <td className="border px-2 py-1">{team.wins}</td>
-                                  <td className="border px-2 py-1">{team.losses}</td>
-                                  <td className="border px-2 py-1">{team.ties}</td>
-                                  <td className="border px-2 py-1">{team.goalsFor}</td>
-                                  <td className="border px-2 py-1">{team.goalsAgainst}</td>
-                                  <td className="border px-2 py-1">{team.penaltyMinutes}</td>
-                                </tr>
+                    <FormField
+                      control={form.control}
+                      name="standardTeamCount"
+                      render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                          <FormLabel className="text-white">Number of teams</FormLabel>
+                          <FormControl>
+                            <select
+                              value={String(field.value ?? 0)}
+                              className={selectClassName}
+                              onChange={(e) => {
+                                const count = Number(e.target.value);
+                                field.onChange(count);
+                                syncGeneratedTeamInputs("standardTeams", count);
+                              }}
+                            >
+                              {STANDARD_TEAM_COUNT_OPTIONS.map((count) => (
+                                <option
+                                  key={count}
+                                  value={count}
+                                  className="bg-[#102317] text-white"
+                                >
+                                  {count === 0 ? "Select count" : count}
+                                </option>
                               ))}
-                            </tbody>
-                          </table>
-                          <Button type="button" className="mt-4" onClick={handleApplySeeds}>
-                            Apply Seeds to Bracket
-                          </Button>
-                        </div>
-                      );
-                    })()}
-                  </AccordionContent>
-                </AccordionItem>
-              )}
+                            </select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-            {/* Bracket Play Section */}
-            {gameFields.filter(g => g.label !== 'Pool Play').length > 0 && (
-              <AccordionItem value="bracket-play">
-                <AccordionTrigger>Bracket Play</AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-4">
-                    {gameFields.filter(g => g.label !== 'Pool Play').map((field) => {
-                      const gameIdx = gameFields.findIndex(f => f.id === field.id);
-                      return (
-                        <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                            {/* ...existing code for bracket play fields... */}
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.day`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Day</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Day" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.date`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Date</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Date" value={field.value ?? ''} onChange={e => {
-                                      field.onChange(e);
-                                      const day = getDayOfWeek(e.target.value);
-                                      form.setValue(`games.${gameIdx}.day`, day);
-                                    }} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.time`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Time</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Time" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.location`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Location</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Location" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.homeTeam`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Home Team</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Home Team (e.g. Seed 1)" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.awayTeam`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Away Team</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} placeholder="Away Team (e.g. Seed 2)" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.homeScore`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Home Score</FormLabel>
-                                  <FormControl>
-                                    <Input type="number" {...field} placeholder="Home Score" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.awayScore`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Away Score</FormLabel>
-                                  <FormControl>
-                                    <Input type="number" {...field} placeholder="Away Score" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.homePenalty`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Home Penalty</FormLabel>
-                                  <FormControl>
-                                    <Input type="number" {...field} placeholder="Home Penalty" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`games.${gameIdx}.awayPenalty`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Away Penalty</FormLabel>
-                                  <FormControl>
-                                    <Input type="number" {...field} placeholder="Away Penalty" value={field.value ?? ''} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
+                  <FormField
+                    control={form.control}
+                    name="standardTeams"
+                    render={() => (
+                      <FormItem>
+                        <FormLabel className="text-white">Team names</FormLabel>
+                        <FormControl>
+                          <div className="rounded-md border border-emerald-900/70 bg-[#102317] p-4">
+                            {standardTeamCount < 2 ? (
+                              <p className="text-sm text-white/50">
+                                Select a team count to generate team name fields.
+                              </p>
+                            ) : (
+                              renderStandardGeneratedTeamInputs()
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-          </Accordion>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            ) : null}
 
-          {/* Pool Play Games (with label) */}
-          {/* <div className="space-y-4 mt-8">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold">Pool Play Games</h3>
-              <Button type="button" onClick={() => appendGame({ day: '', date: '', time: '', location: '', homeTeam: '', awayTeam: '', homeScore: 0, awayScore: 0, label: 'Consolation, Campoionship' })}>
-                Add Pool Play Game
-              </Button>
-            </div>
-            {gameFields.filter(g => g.label !== undefined && g.label !== null && g.label !== '').length === 0 && <div className="text-gray-500">No pool play games added yet.</div>}
-            {gameFields.filter(g => g.label !== undefined && g.label !== null && g.label !== '').map((field) => {
-              const idx = gameFields.findIndex(f => f.id === field.id);
-              return (
-                <div key={field.id} className="border p-4 rounded-md relative space-y-2">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.label`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Label</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Label (e.g. Consolation, 3rd Place, Championship)" value={field.value ?? ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.day`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Day</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Day" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.date`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Date</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Date" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.time`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Time</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Time" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.location`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Location</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Location" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.homeTeam`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Home Team</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Home Team" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.awayTeam`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Away Team</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Away Team" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.homeScore`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Home Score</FormLabel>
-                          <FormControl>
-                            <Input type="number" {...field} placeholder="Home Score" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`games.${idx}.awayScore`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Away Score</FormLabel>
-                          <FormControl>
-                            <Input type="number" {...field} placeholder="Away Score" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <Button type="button" variant="destructive" size="sm" className="absolute top-2 right-2" onClick={() => removeGame(idx)}>
-                    Remove
-                  </Button>
-                </div>
-              );
-            })}
-          </div> */}
-
-          {/* Generate Bracket Button and Dialog */}
-          {form.watch('bracketName') === 'Pool Play + Championship Bracket' && teamFields.length > 1 && timeFields.length > 1 && (
-            <div className="mb-4">
-              <Button type="button" onClick={handleGenerateBracket} disabled={generating}>
-                {generating ? 'Generating...' : 'Generate Bracket'}
-              </Button>
-              {showBracketDialog && (
-                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-                  <div className="bg-white p-6 rounded shadow-lg min-w-75">
-                    <h2 className="text-lg font-bold mb-2">Number of Games Per Team</h2>
-                    <input
-                      type="number"
-                      min={1}
-                      max={teamFields.length - 1}
-                      value={gamesPerTeam}
-                      onChange={e => setGamesPerTeam(Number(e.target.value))}
-                      className="border rounded px-3 py-2 w-full mb-4"
-                    />
-                    <div className="flex gap-2 justify-end">
-                      <Button type="button" variant="secondary" onClick={() => setShowBracketDialog(false)}>Cancel</Button>
-                      <Button type="button" onClick={handleConfirmGamesPerTeam}>OK</Button>
+            {stageType === "JAMBOREE" ? (
+              <div className="space-y-6">
+                <Card className="border-emerald-900/70 bg-[#0f2217] text-white">
+                  <CardContent className="space-y-5 p-5">
+                    <div className="space-y-1">
+                      <h3 className="text-base font-semibold">Mite jamboree setup</h3>
+                      <p className="text-sm text-white/70">
+                        Choose the mite levels included in this event, set team count for
+                        each, and then edit the generated team names.
+                      </p>
                     </div>
-                  </div>
+
+                    <FormField
+                      control={form.control}
+                      name="jamboreeGamesPerTeam"
+                      render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                          <FormLabel className="text-white">Games per team</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={1}
+                              {...field}
+                              value={field.value ?? "3"}
+                            />
+                          </FormControl>
+                          <p className="text-xs text-white/60">
+                            This will be applied to each enabled mite level.
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                  {renderMiteLevelCard(
+                    "Mini Mite",
+                    "enableMiniMite",
+                    "miniMiteTeamCount",
+                    "miniMiteTeams",
+                    enableMiniMite
+                  )}
+                  {renderMiteLevelCard(
+                    "Mite 1",
+                    "enableMite1",
+                    "mite1TeamCount",
+                    "mite1Teams",
+                    enableMite1
+                  )}
+                  {renderMiteLevelCard(
+                    "Mite 2",
+                    "enableMite2",
+                    "mite2TeamCount",
+                    "mite2Teams",
+                    enableMite2
+                  )}
+                  {renderMiteLevelCard(
+                    "Mite 3",
+                    "enableMite3",
+                    "mite3TeamCount",
+                    "mite3Teams",
+                    enableMite3
+                  )}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Create Button */}
-          <div>
-            <Button
-              type='submit'
-              size='lg'
-              disabled={form.formState.isSubmitting}
-              className='button col-span-2 w-full'
-            >
-              {form.formState.isSubmitting ? 'Submitting' : `${type} Bracket`}
-            </Button>
+              </div>
+            ) : null}
           </div>
-        </form>
-      </Form>
-    );
-  }
+        )}
 
-  export default BracketForm;
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={isSaving}>
+            {submitLabel}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isSaving}
+            onClick={() => router.push("/admin/brackets")}
+          >
+            Cancel
+          </Button>
+          {isSaving ? (
+            <span className="text-sm text-white/70">
+              Saving bracket and generating games...
+            </span>
+          ) : null}
+        </div>
+      </form>
+    </Form>
+  );
+}

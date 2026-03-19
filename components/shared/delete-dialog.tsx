@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { useTransition } from 'react';
+
+import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import {
@@ -24,7 +24,6 @@ const DeleteDialog = ({
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-
   const handleDeleteClick = () => {
     startTransition(async () => {
       const res = await action(id);
@@ -47,9 +46,9 @@ const DeleteDialog = ({
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+          <AlertDialogTitle>Delete this item?</AlertDialogTitle>
           <AlertDialogDescription>
-            This action can&apos;t be undone
+            This action can&apos;t be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
