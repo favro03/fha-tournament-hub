@@ -43,7 +43,7 @@ function refToDisplayName(ref: ParticipantRef | null, teamNameByExternalId: Map<
   if (ref.type === "POOL_RANK") return `Seed ${ref.rank}`;
   if (ref.type === "WINNER_OF") return `Winner of ${ref.gameId}`;
   if (ref.type === "LOSER_OF") return `Loser of ${ref.gameId}`;
-  return ref.type ?? "";
+  return "";
 }
 
 function resolveRefUsingSeeds(ref: ParticipantRef | null, orderedTeamIds: string[]): ParticipantRef | null {
