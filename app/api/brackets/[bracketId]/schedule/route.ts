@@ -64,7 +64,7 @@ function refToDisplayName(
   if (ref.type === "POOL_RANK") return `Seed ${ref.rank}`;
   if (ref.type === "WINNER_OF") return `Winner of ${ref.gameId}`;
   if (ref.type === "LOSER_OF") return `Loser of ${ref.gameId}`;
-  return ref.type;
+  return "";;
 }
 
 function normalizeStageTypes(input: unknown, fallback: string[] = ["POOL_PLAY"]) {
