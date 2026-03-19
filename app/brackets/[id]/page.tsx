@@ -1,12 +1,13 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { Trophy, CalendarDays, ImageIcon } from "lucide-react";
+import { Trophy, CalendarDays } from "lucide-react";
 import {
   getPublicBracketView,
   type PublicBracketView,
 } from "@/lib/queries/publicBracketView";
 import { getBracketStandingsView } from "@/lib/queries/bracketStandings";
 import PoolSchedule from "@/components/public/brackets/PoolSchedule";
+import JamboreeSchedule from "@/components/public/brackets/JamboreeSchedule";
 import StandingsTable from "@/components/brackets/StandingsTable";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,11 @@ function formatBracketDateRange(dateRange: string) {
   return formatDateMMDDYYYY(dateRange);
 }
 
+function isJamboreeBracket(view: PublicBracketView) {
+  if (view.bracket.tournamentFormat === "JAMBOREE") return true;
+  return view.games.some((game) => game.stageType === "JAMBOREE");
+}
+
 export default async function PublicBracketPage(props: {
   params: Promise<{ id: string }>;
 }) {
@@ -85,15 +91,24 @@ export default async function PublicBracketPage(props: {
   if (!view) return notFound();
 
   const isImageBased = view.bracket.isImageBased;
+  const isJamboree = !isImageBased && isJamboreeBracket(view);
 
-  const standings = isImageBased ? null : await getBracketStandingsView(bracketId);
+  const standings =
+    isImageBased || isJamboree ? null : await getBracketStandingsView(bracketId);
 
-  const poolGames = isImageBased
-    ? []
-    : (view.games ?? []).filter((g) => g.stageType === "POOL_PLAY");
-  const placementGames = isImageBased
-    ? []
-    : (view.games ?? []).filter((g) => g.stageType === "PLACEMENT");
+  const poolGames =
+    isImageBased || isJamboree
+      ? []
+      : (view.games ?? []).filter((g) => g.stageType === "POOL_PLAY");
+
+  const placementGames =
+    isImageBased || isJamboree
+      ? []
+      : (view.games ?? []).filter((g) => g.stageType === "PLACEMENT");
+
+  const jamboreeGames = isJamboree
+    ? (view.games ?? []).filter((g) => g.stageType === "JAMBOREE")
+    : [];
 
   const poolByDay = groupGamesByDay(poolGames);
   const placementByDay = groupGamesByDay(placementGames);
@@ -123,12 +138,22 @@ export default async function PublicBracketPage(props: {
                       <Trophy className="h-4 w-4 text-emerald-300" />
                       {view.bracket.youthLevel}
                     </span>
+
                     <span className="text-emerald-300/70">•</span>
+
                     <span className="inline-flex items-center gap-1.5">
                       <CalendarDays className="h-4 w-4 text-emerald-300" />
                       {formatBracketDateRange(view.bracket.date)}
                     </span>
-                 
+
+                    {isJamboree ? (
+                      <>
+                        <span className="text-emerald-300/70">•</span>
+                        <span className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                          Mite Jamboree
+                        </span>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -136,10 +161,6 @@ export default async function PublicBracketPage(props: {
 
             {isImageBased ? (
               <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md lg:p-6">
-                <div className="mb-4 flex flex-wrap items-center gap-3 text-white">
-                 
-                </div>
-
                 {view.bracket.image ? (
                   <div className="overflow-hidden rounded-[24px] border border-emerald-400/15 bg-white/5">
                     <div className="relative aspect-[4/5] w-full bg-slate-950/40 sm:aspect-[16/14] lg:aspect-[16/12]">
@@ -159,6 +180,8 @@ export default async function PublicBracketPage(props: {
                   </div>
                 )}
               </div>
+            ) : isJamboree ? (
+              <JamboreeSchedule games={jamboreeGames} />
             ) : (
               <div className="space-y-6">
                 <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">

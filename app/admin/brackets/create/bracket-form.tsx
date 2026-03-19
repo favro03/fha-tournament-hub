@@ -23,12 +23,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { UploadButton } from "@/lib/uploadthing";
 
 const YOUTH_LEVELS = [
-  { value: "MINI_MITE", label: "Mini Mite" },
   { value: "MITE", label: "Mite" },
   { value: "SQUIRT", label: "Squirt" },
   { value: "PEEWEE", label: "Peewee" },
   { value: "BANTAM", label: "Bantam" },
-  { value: "HIGH_SCHOOL", label: "High School" },
 ] as const;
 
 const BUILD_OPTIONS = [

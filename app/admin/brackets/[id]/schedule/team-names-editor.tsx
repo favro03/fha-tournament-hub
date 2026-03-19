@@ -184,10 +184,7 @@ export default function TeamNamesEditor({
       <div className='mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
         <div>
           <h2 className='text-xl font-semibold text-white'>Team Names</h2>
-          <p className='mt-1 text-sm text-white/65'>
-            Update team names by mite level. Changes auto-save and also update the
-            scheduled matchups for this bracket.
-          </p>
+          
         </div>
 
         <SaveBadge state={hasBlankNames ? 'error' : saveState} />
@@ -234,9 +231,7 @@ export default function TeamNamesEditor({
         ))}
       </div>
 
-      <div className='mt-4 text-xs text-white/60'>
-        Team names update across bracket games for this tournament.
-      </div>
+      
     </div>
   );
 }
