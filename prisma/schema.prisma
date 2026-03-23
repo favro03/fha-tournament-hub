@@ -6,6 +6,18 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum SponsorPlacement {
+  HEADER
+  SCHEDULE
+  STANDINGS
+  BRACKET
+}
+
 model Hotel {
   id      Int    @id @default(autoincrement())
   name    String
@@ -25,12 +37,36 @@ model Restaurant {
 }
 
 model User {
-  id       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  username String    @unique
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username String   @unique
+  email    String?  @unique
   password String
-  role     String    @default("admin")
-  account  Account[]
-  session  Session[]
+  role     UserRole @default(ADMIN)
+  isActive Boolean  @default(true)
+
+  account Account[]
+  session Session[]
+
+  sentInvites AdminInvite[] @relation("InviteCreatedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model AdminInvite {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String    @unique
+  role      UserRole  @default(ADMIN)
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+
+  createdById String @db.Uuid
+  createdBy   User   @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Account {
@@ -111,14 +147,34 @@ model Bracket {
   tournamentFormat String @default("POOL_PLACEMENT") // POOL_PLACEMENT | JAMBOREE
 
   // --- tournament engine fields ---
-  format         String   @default("ROUND_ROBIN") // ROUND_ROBIN, SINGLE_ELIMINATION...
+  format         String    @default("ROUND_ROBIN") // ROUND_ROBIN, SINGLE_ELIMINATION...
   engineConfig   Json?
   standingsRules Json?
   games          Game[]
   teams          Team[]
   times          Times[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  sponsors       Sponsor[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model Sponsor {
+  id           Int              @id @default(autoincrement())
+  businessName String
+  imageUrl     String
+  headline     String?
+  bodyText     String?
+  buttonText   String?
+  linkUrl      String?
+  placement    SponsorPlacement
+  isActive     Boolean          @default(true)
+  sortOrder    Int              @default(0)
+
+  tournamentId Int?
+  tournament   Bracket? @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Game {

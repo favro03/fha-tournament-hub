@@ -5,7 +5,11 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import React from 'react';
 
-const links = [
+type Props = React.HTMLAttributes<HTMLElement> & {
+  role?: 'SUPER_ADMIN' | 'ADMIN';
+};
+
+const baseLinks = [
   {
     title: 'Overview',
     href: '/admin/overview',
@@ -22,17 +26,19 @@ const links = [
     title: 'Restaurants',
     href: '/admin/restaurants',
   },
-  // {
-  //   title: 'Users',
-  //   href: '/admin/users',
-  // },
 ];
 
-const MainNav = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLElement>) => {
+const superAdminLinks = [
+  {
+    title: 'Super Admin',
+    href: '/super-admin/invites',
+  },
+];
+
+const MainNav = ({ className, role, ...props }: Props) => {
   const pathname = usePathname();
+  const links =
+    role === 'SUPER_ADMIN' ? [...baseLinks, ...superAdminLinks] : baseLinks;
 
   return (
     <nav

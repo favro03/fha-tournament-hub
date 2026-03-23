@@ -3,13 +3,15 @@ import Image from 'next/image';
 import Link from 'next/link';
 import Menu from '@/components/shared/header/menu';
 import MainNav from './main-nav';
-// import AdminSearch from '@/components/admin/admin-search';
+import { requireAdmin } from '@/lib/auth/guards';
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await requireAdmin();
+
   return (
     <>
       <div className='flex min-h-screen flex-col bg-[#0b1a12] text-white'>
@@ -23,9 +25,8 @@ export default function AdminLayout({
                 alt={APP_NAME}
               />
             </Link>
-            <MainNav className='mx-6' />
+            <MainNav className='mx-6' role={session.user?.role} />
             <div className='ml-auto flex items-center space-x-4'>
-              {/* <AdminSearch /> */}
               <Menu />
             </div>
           </div>

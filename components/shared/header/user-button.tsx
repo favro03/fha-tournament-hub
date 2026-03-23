@@ -31,6 +31,8 @@ const UserButton = () => {
   }
 
   const firstInitial = session.user?.username?.charAt(0).toUpperCase() ?? "";
+  const isAdmin =
+    session.user?.role === "ADMIN" || session.user?.role === "SUPER_ADMIN";
 
   return (
     <div className="flex items-center">
@@ -57,10 +59,13 @@ const UserButton = () => {
               <div className="text-sm font-medium leading-none text-white">
                 {session.user?.username}
               </div>
+              <div className="text-xs text-white/60">
+                {session.user?.role ?? "No role"}
+              </div>
             </div>
           </DropdownMenuLabel>
 
-          {session.user?.role === "admin" && (
+          {isAdmin && (
             <DropdownMenuItem className="mt-2 cursor-pointer rounded-xl px-2 py-0 text-slate-100 focus:bg-emerald-500/10 focus:text-white">
               <Link
                 href="/admin/overview"
@@ -68,6 +73,18 @@ const UserButton = () => {
               >
                 <Shield className="h-4 w-4 text-emerald-300" />
                 <span>Admin Page</span>
+              </Link>
+            </DropdownMenuItem>
+          )}
+
+          {session.user?.role === "SUPER_ADMIN" && (
+            <DropdownMenuItem className="mt-1 cursor-pointer rounded-xl px-2 py-0 text-slate-100 focus:bg-emerald-500/10 focus:text-white">
+              <Link
+                href="/super-admin/invites"
+                className="flex w-full items-center gap-2 rounded-xl px-2 py-2"
+              >
+                <Shield className="h-4 w-4 text-emerald-300" />
+                <span>Super Admin</span>
               </Link>
             </DropdownMenuItem>
           )}

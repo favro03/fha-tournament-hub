@@ -1,10 +1,10 @@
-import { auth } from '@/auth';
 import { getBrackets } from '@/lib/actions/brackets.actions';
 import { getHotels } from '@/lib/actions/hotel.actions';
 import { getRestaurants } from '@/lib/actions/restaurant.actions';
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { requireAdmin } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
   title: 'Admin Dashboard',
@@ -53,11 +53,7 @@ function formatBracketSide(side?: string | null) {
 }
 
 const AdminOverviewPage = async () => {
-  const session = await auth();
-
-  if (session?.user?.role !== 'admin') {
-    throw new Error('User is not authorized');
-  }
+  await requireAdmin();
 
   const [brackets, hotels, restaurants] = await Promise.all([
     getBrackets(),
@@ -154,48 +150,51 @@ const AdminOverviewPage = async () => {
         </div>
       </div>
 
-      <div className='grid gap-6 xl:grid-cols-3'>
-        <div className='rounded-xl border border-emerald-900/50 bg-[#102317] p-5 xl:col-span-2'>
-          <div className='mb-4 flex items-center justify-between'>
+      <div className='grid gap-6 xl:grid-cols-[1.3fr_0.9fr]'>
+        <div className='rounded-2xl border border-emerald-900/50 bg-[#102317] p-6'>
+          <div className='flex items-center justify-between'>
             <div>
               <h2 className='text-xl font-semibold text-white'>Upcoming Tournaments</h2>
-              <p className='text-sm text-white/60'>Next brackets on the schedule.</p>
+              <p className='mt-1 text-sm text-white/60'>
+                Next tournaments based on start date.
+              </p>
             </div>
             <Button asChild variant='ghost'>
               <Link href='/admin/brackets'>View all</Link>
             </Button>
           </div>
 
-          <div className='space-y-3'>
+          <div className='mt-5 space-y-3'>
             {upcoming.length > 0 ? (
               upcoming.slice(0, 6).map((bracket) => (
                 <div
                   key={bracket.id}
-                  className='flex flex-col gap-3 rounded-lg border border-emerald-900/40 bg-[#2e5c3f] p-4 md:flex-row md:items-center md:justify-between'
+                  className='rounded-xl border border-emerald-900/40 bg-black/10 p-4'
                 >
-                  <div>
-                    <p className='font-semibold text-white'>{bracket.name}</p>
-                    <p className='text-sm text-white/65'>
-                      {bracket.youthLevel}
-                      {bracket.side ? ` • ${formatBracketSide(bracket.side)}` : ''}
-                      {' • '}
-                      {formatDateRange(bracket.date)}
-                    </p>
-                  </div>
-                  <div className='flex gap-2'>
-                    <Button asChild variant='outline' size='sm'>
-                      <Link href={`/admin/brackets/${bracket.id}`}>Open</Link>
-                    </Button>
-                    <Button asChild variant='outline' size='sm'>
-                      <Link href={`/admin/brackets/${bracket.id}/schedule`}>
-                        Schedule
-                      </Link>
+                  <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+                    <div>
+                      <p className='text-base font-semibold text-white'>{bracket.name}</p>
+                      <div className='mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60'>
+                        <span>{bracket.youthLevel}</span>
+                        <span>•</span>
+                        <span>{formatDateRange(bracket.date ?? '')}</span>
+                        {!!bracket.side && (
+                          <>
+                            <span>•</span>
+                            <span>{formatBracketSide(bracket.side)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <Button asChild size='sm' variant='outline'>
+                      <Link href={`/admin/brackets/${bracket.id}/update`}>Edit</Link>
                     </Button>
                   </div>
                 </div>
               ))
             ) : (
-              <div className='rounded-lg border border-dashed border-emerald-900/50 bg-[#2e5c3f] p-4 text-sm text-white/65'>
+              <div className='rounded-xl border border-dashed border-emerald-900/50 p-6 text-sm text-white/60'>
                 No upcoming tournaments found.
               </div>
             )}
@@ -203,42 +202,46 @@ const AdminOverviewPage = async () => {
         </div>
 
         <div className='space-y-6'>
-          <div className='rounded-xl border border-emerald-900/50 bg-[#102317] p-5'>
-            <h2 className='text-xl font-semibold text-white'>Quick Links</h2>
-            <div className='mt-4 grid gap-2'>
-              <Button asChild variant='outline' className='justify-start'>
-                <Link href='/admin/brackets'>Manage Brackets</Link>
-              </Button>
-              <Button asChild variant='outline' className='justify-start'>
-                <Link href='/admin/hotels'>Manage Hotels</Link>
-              </Button>
-              <Button asChild variant='outline' className='justify-start'>
-                <Link href='/admin/restaurants'>Manage Restaurants</Link>
-              </Button>
-            </div>
-          </div>
-
-          <div className='rounded-xl border border-emerald-900/50 bg-[#102317] p-5'>
-            <h2 className='text-xl font-semibold text-white'>Recently Added</h2>
+          <div className='rounded-2xl border border-emerald-900/50 bg-[#102317] p-6'>
+            <h2 className='text-xl font-semibold text-white'>Recently Updated</h2>
             <div className='mt-4 space-y-3'>
               {recentBrackets.length > 0 ? (
                 recentBrackets.map((bracket) => (
                   <div
                     key={bracket.id}
-                    className='rounded-lg border border-emerald-900/40 bg-[#2e5c3f] p-3'
+                    className='rounded-xl border border-emerald-900/40 bg-black/10 p-4'
                   >
                     <p className='font-medium text-white'>{bracket.name}</p>
-                    <p className='text-sm text-white/60'>
-                      {bracket.youthLevel}
-                      {bracket.side ? ` • ${formatBracketSide(bracket.side)}` : ''}
-                      {' • '}
-                      {formatDateRange(bracket.date)}
+                    <p className='mt-1 text-xs text-white/60'>
+                      {bracket.youthLevel} • {formatDateRange(bracket.date ?? '')}
                     </p>
                   </div>
                 ))
               ) : (
-                <p className='text-sm text-white/65'>No brackets available yet.</p>
+                <p className='text-sm text-white/60'>No bracket activity yet.</p>
               )}
+            </div>
+          </div>
+
+          <div className='rounded-2xl border border-emerald-900/50 bg-[#102317] p-6'>
+            <h2 className='text-xl font-semibold text-white'>Content Summary</h2>
+            <div className='mt-4 space-y-3 text-sm text-white/70'>
+              <div className='flex items-center justify-between rounded-lg bg-black/10 px-3 py-2'>
+                <span>Hotels</span>
+                <span>{Array.isArray(hotels) ? hotels.length : 0}</span>
+              </div>
+              <div className='flex items-center justify-between rounded-lg bg-black/10 px-3 py-2'>
+                <span>Restaurants</span>
+                <span>{Array.isArray(restaurants) ? restaurants.length : 0}</span>
+              </div>
+              <div className='flex items-center justify-between rounded-lg bg-black/10 px-3 py-2'>
+                <span>Upcoming tournaments</span>
+                <span>{upcoming.length}</span>
+              </div>
+              <div className='flex items-center justify-between rounded-lg bg-black/10 px-3 py-2'>
+                <span>Active tournaments</span>
+                <span>{active.length}</span>
+              </div>
             </div>
           </div>
         </div>
