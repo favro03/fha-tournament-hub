@@ -33,9 +33,15 @@ export default async function SuperAdminLayout({
             </Link>
             <Link
               href='/super-admin/invites'
-              className='text-emerald-400 transition-colors hover:text-emerald-300'
+              className='text-white/70 transition-colors hover:text-emerald-300'
             >
               Invites
+            </Link>
+            <Link
+              href='/super-admin/users'
+              className='text-emerald-400 transition-colors hover:text-emerald-300'
+            >
+              Users
             </Link>
             <Link
               href='/super-admin/sponsors'

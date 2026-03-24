@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+
 import { prisma } from '@/db/prisma';
 import { requireSuperAdmin } from '@/lib/auth/guards';
 import { Button } from '@/components/ui/button';
@@ -19,11 +20,9 @@ export const metadata: Metadata = {
 function getInviteStatus(invite: {
   usedAt: Date | null;
   revokedAt: Date | null;
-  expiresAt: Date;
 }) {
   if (invite.usedAt) return 'Accepted';
   if (invite.revokedAt) return 'Revoked';
-  if (invite.expiresAt.getTime() < Date.now()) return 'Expired';
   return 'Pending';
 }
 
@@ -33,8 +32,6 @@ function getStatusClasses(status: string) {
       return 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
     case 'Revoked':
       return 'bg-red-500/15 text-red-300 border border-red-500/30';
-    case 'Expired':
-      return 'bg-amber-500/15 text-amber-300 border border-amber-500/30';
     default:
       return 'bg-sky-500/15 text-sky-300 border border-sky-500/30';
   }
@@ -90,7 +87,12 @@ export default async function SuperAdminInvitesPage() {
               return (
                 <TableRow key={invite.id}>
                   <TableCell className='font-medium text-white'>
-                    {invite.email}
+                    <Link
+                      href={`/super-admin/invites/${invite.id}`}
+                      className='transition-colors hover:text-emerald-300 hover:underline'
+                    >
+                      {invite.email}
+                    </Link>
                   </TableCell>
                   <TableCell>{invite.role}</TableCell>
                   <TableCell>
