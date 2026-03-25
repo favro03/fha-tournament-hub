@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
+import { useEffect, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,26 +24,49 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 
-const sponsorEditFormSchema = z.object({
-  sponsorId: z.number().int().positive(),
-  businessName: z.string().trim().min(1, 'Business name is required'),
-  imageUrl: z.string().trim().url('Please upload a sponsor image'),
-  headline: z.string().trim().optional(),
-  bodyText: z.string().trim().optional(),
-  buttonText: z.string().trim().optional(),
-  linkUrl: z
-    .string()
-    .trim()
-    .optional()
-    .refine((value) => !value || /^https?:\/\//i.test(value), {
-      message: 'Link URL must start with http:// or https://',
-    }),
-  isActive: z.boolean(),
-  sortOrder: z.coerce.number().int().min(0, 'Sort order must be 0 or higher'),
-});
+const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
+
+const sponsorEditFormSchema = z
+  .object({
+    sponsorId: z.number().int().positive(),
+    businessName: z.string().trim().min(1, 'Business name is required'),
+    imageUrl: z.string().trim().url('Please upload a sponsor image'),
+    headline: z.string().trim().optional(),
+    bodyText: z.string().trim().optional(),
+    buttonText: z.string().trim().optional(),
+    linkUrl: z
+      .string()
+      .trim()
+      .optional()
+      .refine((value) => !value || /^https?:\/\//i.test(value), {
+        message: 'Link URL must start with http:// or https://',
+      }),
+    scope: z.enum(sponsorScopeValues),
+    tournamentId: z
+      .union([z.literal(''), z.coerce.number().int().positive()])
+      .optional(),
+    isActive: z.boolean(),
+    sortOrder: z.coerce.number().int().min(0, 'Sort order must be 0 or higher'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.scope === 'TOURNAMENT' && !value.tournamentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['tournamentId'],
+        message: 'Please select a tournament for a tournament-specific sponsor.',
+      });
+    }
+  });
 
 type SponsorEditFormInput = z.input<typeof sponsorEditFormSchema>;
 type SponsorEditFormValues = z.output<typeof sponsorEditFormSchema>;
+
+type TournamentOption = {
+  id: number;
+  name: string;
+  youthLevel: string;
+  date: string;
+};
 
 type SponsorEditFormProps = {
   sponsor: {
@@ -54,12 +77,26 @@ type SponsorEditFormProps = {
     bodyText: string | null;
     buttonText: string | null;
     linkUrl: string | null;
+    scope: 'GLOBAL' | 'TOURNAMENT';
+    tournamentId: number | null;
     isActive: boolean;
     sortOrder: number;
   };
+  tournaments: TournamentOption[];
 };
 
-export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
+function selectClassName() {
+  return 'flex h-9 w-full rounded-md border border-emerald-900/70 bg-[#0f2217] px-3 py-1 text-sm text-white shadow-xs outline-none transition-[color,box-shadow,border-color] focus-visible:border-emerald-400 focus-visible:ring-[3px] focus-visible:ring-emerald-400/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50';
+}
+
+function tournamentOptionLabel(tournament: TournamentOption) {
+  return `${tournament.name} • ${tournament.youthLevel} • ${tournament.date}`;
+}
+
+export function SponsorEditForm({
+  sponsor,
+  tournaments,
+}: SponsorEditFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -73,15 +110,35 @@ export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
       bodyText: sponsor.bodyText ?? '',
       buttonText: sponsor.buttonText ?? '',
       linkUrl: sponsor.linkUrl ?? '',
+      scope: sponsor.scope,
+      tournamentId: sponsor.tournamentId ? String(sponsor.tournamentId) : '',
       isActive: sponsor.isActive,
       sortOrder: sponsor.sortOrder,
     },
   });
 
+  const scope = form.watch('scope');
+  const imageUrl = form.watch('imageUrl');
+
+  useEffect(() => {
+    if (scope === 'GLOBAL') {
+      form.setValue('tournamentId', '', {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [form, scope]);
+
   function onSubmit(values: SponsorEditFormValues) {
     startTransition(async () => {
       try {
-        const result = await updateSponsor(values);
+        const result = await updateSponsor({
+          ...values,
+          tournamentId:
+            values.scope === 'TOURNAMENT' && values.tournamentId
+              ? Number(values.tournamentId)
+              : null,
+        });
 
         if (!result.success) {
           toast.error(result.message);
@@ -114,14 +171,12 @@ export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
     });
   }
 
-  const imageUrl = form.watch('imageUrl');
-
   return (
     <div className='space-y-6'>
       <div>
         <h2 className='text-lg font-semibold text-white'>Edit Sponsor</h2>
         <p className='mt-1 text-sm text-white/65'>
-          Update sponsor details, status, and ordering.
+          Update sponsor details, scope, status, and ordering.
         </p>
       </div>
 
@@ -212,6 +267,76 @@ export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
           <div className='grid gap-6 md:grid-cols-2'>
             <FormField
               control={form.control}
+              name='scope'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Scope</FormLabel>
+                  <FormControl>
+                    <select
+                      className={selectClassName()}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    >
+                      <option className='bg-[#0f2217] text-white' value='GLOBAL'>
+                        Global
+                      </option>
+                      <option
+                        className='bg-[#0f2217] text-white'
+                        value='TOURNAMENT'
+                      >
+                        Tournament Specific
+                      </option>
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='tournamentId'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tournament</FormLabel>
+                  <FormControl>
+                    <select
+                      className={selectClassName()}
+                      value={field.value === undefined ? '' : String(field.value)}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                      disabled={scope !== 'TOURNAMENT'}
+                    >
+                      <option className='bg-[#0f2217] text-white' value=''>
+                        {scope === 'TOURNAMENT'
+                          ? 'Select a tournament'
+                          : 'Global sponsors are not tied to a tournament'}
+                      </option>
+                      {tournaments.map((tournament) => (
+                        <option
+                          key={tournament.id}
+                          value={String(tournament.id)}
+                          className='bg-[#0f2217] text-white'
+                        >
+                          {tournamentOptionLabel(tournament)}
+                        </option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className='grid gap-6 md:grid-cols-2'>
+            <FormField
+              control={form.control}
               name='sortOrder'
               render={({ field }) => (
                 <FormItem>
@@ -269,7 +394,12 @@ export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
               <FormItem>
                 <FormLabel>Headline</FormLabel>
                 <FormControl>
-                  <Input {...field} value={field.value ?? ''} autoComplete='off' />
+                  <Input
+                    {...field}
+                    value={field.value ?? ''}
+                    autoComplete='off'
+                    placeholder='Proud supporter of Faribault Hockey'
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -287,6 +417,7 @@ export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
                     {...field}
                     value={field.value ?? ''}
                     className='min-h-28'
+                    placeholder='Optional sponsor description or promo text'
                   />
                 </FormControl>
                 <FormMessage />
@@ -302,7 +433,12 @@ export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
                 <FormItem>
                   <FormLabel>Button Text</FormLabel>
                   <FormControl>
-                    <Input {...field} value={field.value ?? ''} autoComplete='off' />
+                    <Input
+                      {...field}
+                      value={field.value ?? ''}
+                      autoComplete='off'
+                      placeholder='Visit Website'
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -316,7 +452,12 @@ export function SponsorEditForm({ sponsor }: SponsorEditFormProps) {
                 <FormItem>
                   <FormLabel>Link URL</FormLabel>
                   <FormControl>
-                    <Input {...field} value={field.value ?? ''} autoComplete='off' />
+                    <Input
+                      {...field}
+                      value={field.value ?? ''}
+                      autoComplete='off'
+                      placeholder='https://example.com'
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

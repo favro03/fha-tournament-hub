@@ -41,6 +41,17 @@ function getStatusClasses(isActive: boolean) {
     : 'border border-red-500/30 bg-red-500/15 text-red-300';
 }
 
+function getScopeSummary(
+  scope: 'GLOBAL' | 'TOURNAMENT',
+  tournamentName: string | null
+) {
+  if (scope === 'GLOBAL') {
+    return 'Global';
+  }
+
+  return tournamentName ? `Tournament • ${tournamentName}` : 'Tournament';
+}
+
 export default async function SponsorDetailPage({
   params,
 }: SponsorDetailPageProps) {
@@ -53,24 +64,42 @@ export default async function SponsorDetailPage({
     notFound();
   }
 
-  const sponsor = await prisma.sponsor.findUnique({
-    where: { id: sponsorId },
-    select: {
-      id: true,
-      businessName: true,
-      imageUrl: true,
-      headline: true,
-      bodyText: true,
-      buttonText: true,
-      linkUrl: true,
-      placement: true,
-      isActive: true,
-      sortOrder: true,
-      tournamentId: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  const [sponsor, tournaments] = await Promise.all([
+    prisma.sponsor.findUnique({
+      where: { id: sponsorId },
+      select: {
+        id: true,
+        businessName: true,
+        imageUrl: true,
+        headline: true,
+        bodyText: true,
+        buttonText: true,
+        linkUrl: true,
+        placement: true,
+        scope: true,
+        isActive: true,
+        sortOrder: true,
+        tournamentId: true,
+        createdAt: true,
+        updatedAt: true,
+        tournament: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+    prisma.bracket.findMany({
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        name: true,
+        youthLevel: true,
+        date: true,
+      },
+    }),
+  ]);
 
   if (!sponsor) {
     notFound();
@@ -95,8 +124,8 @@ export default async function SponsorDetailPage({
         <CardHeader>
           <CardTitle>Sponsor Details</CardTitle>
           <CardDescription className='text-white/65'>
-            This sponsor is currently configured as a global sponsor.
-            Tournament-specific assignment will come later.
+            This sponsor can be configured as either a site-wide sponsor or a
+            tournament-specific sponsor.
           </CardDescription>
         </CardHeader>
 
@@ -129,7 +158,7 @@ export default async function SponsorDetailPage({
                 Scope
               </div>
               <div className='mt-1 text-sm text-white'>
-                {sponsor.tournamentId ? 'Tournament-Specific' : 'Global'}
+                {getScopeSummary(sponsor.scope, sponsor.tournament?.name ?? null)}
               </div>
             </div>
 
@@ -168,9 +197,12 @@ export default async function SponsorDetailPage({
               bodyText: sponsor.bodyText,
               buttonText: sponsor.buttonText,
               linkUrl: sponsor.linkUrl,
+              scope: sponsor.scope,
+              tournamentId: sponsor.tournamentId,
               isActive: sponsor.isActive,
               sortOrder: sponsor.sortOrder,
             }}
+            tournaments={tournaments}
           />
         </CardContent>
       </Card>

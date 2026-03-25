@@ -6,22 +6,36 @@ import { z } from 'zod';
 import { prisma } from '@/db/prisma';
 import { requireSuperAdmin } from '@/lib/auth/guards';
 
-const createSponsorSchema = z.object({
-  businessName: z.string().trim().min(1, 'Business name is required'),
-  imageUrl: z.string().trim().url('Enter a valid image URL'),
-  headline: z.string().trim().optional(),
-  bodyText: z.string().trim().optional(),
-  buttonText: z.string().trim().optional(),
-  linkUrl: z
-    .string()
-    .trim()
-    .optional()
-    .refine((value) => !value || /^https?:\/\//i.test(value), {
-      message: 'Link URL must start with http:// or https://',
-    }),
-  isActive: z.boolean(),
-  sortOrder: z.coerce.number().int().min(0, 'Sort order must be 0 or higher'),
-});
+const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
+
+const createSponsorSchema = z
+  .object({
+    businessName: z.string().trim().min(1, 'Business name is required'),
+    imageUrl: z.string().trim().url('Enter a valid image URL'),
+    headline: z.string().trim().optional(),
+    bodyText: z.string().trim().optional(),
+    buttonText: z.string().trim().optional(),
+    linkUrl: z
+      .string()
+      .trim()
+      .optional()
+      .refine((value) => !value || /^https?:\/\//i.test(value), {
+        message: 'Link URL must start with http:// or https://',
+      }),
+    scope: z.enum(sponsorScopeValues),
+    tournamentId: z.coerce.number().int().positive().nullable().optional(),
+    isActive: z.boolean(),
+    sortOrder: z.coerce.number().int().min(0, 'Sort order must be 0 or higher'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.scope === 'TOURNAMENT' && !value.tournamentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['tournamentId'],
+        message: 'Please select a tournament for a tournament-specific sponsor.',
+      });
+    }
+  });
 
 type CreateSponsorInput = z.infer<typeof createSponsorSchema>;
 
@@ -59,6 +73,22 @@ export async function createSponsor(
     }
 
     const data = parsed.data;
+    const tournamentId =
+      data.scope === 'TOURNAMENT' ? data.tournamentId ?? null : null;
+
+    if (tournamentId) {
+      const tournament = await prisma.bracket.findUnique({
+        where: { id: tournamentId },
+        select: { id: true },
+      });
+
+      if (!tournament) {
+        return {
+          success: false,
+          message: 'Selected tournament was not found.',
+        };
+      }
+    }
 
     const sponsor = await prisma.sponsor.create({
       data: {
@@ -69,9 +99,10 @@ export async function createSponsor(
         buttonText: emptyToNull(data.buttonText),
         linkUrl: emptyToNull(data.linkUrl),
         placement: 'HEADER',
+        scope: data.scope,
         isActive: data.isActive,
         sortOrder: data.sortOrder,
-        tournamentId: null,
+        tournamentId,
       },
       select: {
         id: true,

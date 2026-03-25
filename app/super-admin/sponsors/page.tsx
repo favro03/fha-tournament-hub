@@ -48,6 +48,12 @@ function getStatusClasses(isActive: boolean) {
     : 'border border-red-500/30 bg-red-500/15 text-red-300';
 }
 
+function getScopeClasses(scope: 'GLOBAL' | 'TOURNAMENT') {
+  return scope === 'GLOBAL'
+    ? 'border border-cyan-500/30 bg-cyan-500/15 text-cyan-300'
+    : 'border border-fuchsia-500/30 bg-fuchsia-500/15 text-fuchsia-300';
+}
+
 export default async function SuperAdminSponsorsPage() {
   await requireSuperAdmin();
 
@@ -57,6 +63,7 @@ export default async function SuperAdminSponsorsPage() {
       id: true,
       businessName: true,
       placement: true,
+      scope: true,
       isActive: true,
       sortOrder: true,
       updatedAt: true,
@@ -75,7 +82,7 @@ export default async function SuperAdminSponsorsPage() {
         <div>
           <h1 className='text-3xl font-bold text-white'>Sponsors</h1>
           <p className='mt-1 text-sm text-white/65'>
-            Manage sponsor records for future ad placement across tournament
+            Manage site-wide and tournament-specific sponsor records for public
             pages.
           </p>
         </div>
@@ -100,9 +107,10 @@ export default async function SuperAdminSponsorsPage() {
         <TableBody>
           {sponsors.length > 0 ? (
             sponsors.map((sponsor) => {
-              const scopeLabel = sponsor.tournament
-                ? sponsor.tournament.name
-                : 'Global';
+              const scopeLabel =
+                sponsor.scope === 'GLOBAL'
+                  ? 'Global'
+                  : sponsor.tournament?.name ?? 'Tournament not found';
 
               return (
                 <TableRow key={sponsor.id}>
@@ -125,7 +133,18 @@ export default async function SuperAdminSponsorsPage() {
                     </span>
                   </TableCell>
 
-                  <TableCell>{scopeLabel}</TableCell>
+                  <TableCell>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getScopeClasses(
+                          sponsor.scope
+                        )}`}
+                      >
+                        {sponsor.scope === 'GLOBAL' ? 'Global' : 'Tournament'}
+                      </span>
+                      <span className='text-sm text-white/85'>{scopeLabel}</span>
+                    </div>
+                  </TableCell>
 
                   <TableCell>
                     <span

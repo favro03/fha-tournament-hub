@@ -4,11 +4,19 @@ import { APP_NAME } from '@/lib/constants';
 import Image from 'next/image';
 import Menu from '@/components/shared/header/menu';
 
+type SuperAdminLayoutProps = {
+  children: React.ReactNode;
+};
+
+function navLinkClass(isActive: boolean) {
+  return isActive
+    ? 'text-emerald-400 transition-colors hover:text-emerald-300'
+    : 'text-white/70 transition-colors hover:text-emerald-300';
+}
+
 export default async function SuperAdminLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: SuperAdminLayoutProps) {
   await requireSuperAdmin();
 
   return (
@@ -25,28 +33,16 @@ export default async function SuperAdminLayout({
           </Link>
 
           <nav className='mx-6 flex items-center gap-6 text-sm font-medium'>
-            <Link
-              href='/admin/overview'
-              className='text-white/70 transition-colors hover:text-emerald-300'
-            >
+            <Link href='/admin/overview' className={navLinkClass(false)}>
               Admin
             </Link>
-            <Link
-              href='/super-admin/invites'
-              className='text-white/70 transition-colors hover:text-emerald-300'
-            >
+            <Link href='/super-admin/invites' className={navLinkClass(false)}>
               Invites
             </Link>
-            <Link
-              href='/super-admin/users'
-              className='text-emerald-400 transition-colors hover:text-emerald-300'
-            >
+            <Link href='/super-admin/users' className={navLinkClass(false)}>
               Users
             </Link>
-            <Link
-              href='/super-admin/sponsors'
-              className='text-white/70 transition-colors hover:text-emerald-300'
-            >
+            <Link href='/super-admin/sponsors' className={navLinkClass(true)}>
               Sponsors
             </Link>
           </nav>
