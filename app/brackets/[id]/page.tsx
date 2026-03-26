@@ -7,7 +7,7 @@ import {
   type PublicBracketView,
 } from '@/lib/queries/publicBracketView';
 import { getBracketStandingsView } from '@/lib/queries/bracketStandings';
-import { getPublicSponsorsForTournament } from '@/lib/queries/publicSponsors';
+import { getTournamentPageSponsors } from '@/lib/queries/publicSponsors';
 import PoolSchedule from '@/components/public/brackets/PoolSchedule';
 import JamboreeSchedule from '@/components/public/brackets/JamboreeSchedule';
 import StandingsTable from '@/components/brackets/StandingsTable';
@@ -93,17 +93,7 @@ export default async function PublicBracketPage(props: {
 
   if (!view) return notFound();
 
-  const [
-    headerSponsors,
-    standingsSponsors,
-    scheduleSponsors,
-    bracketSponsors,
-  ] = await Promise.all([
-    getPublicSponsorsForTournament(bracketId, { placement: 'HEADER' }),
-    getPublicSponsorsForTournament(bracketId, { placement: 'STANDINGS' }),
-    getPublicSponsorsForTournament(bracketId, { placement: 'SCHEDULE' }),
-    getPublicSponsorsForTournament(bracketId, { placement: 'BRACKET' }),
-  ]);
+  const sponsors = await getTournamentPageSponsors(bracketId);
 
   const isImageBased = view.bracket.isImageBased;
   const isJamboree = !isImageBased && isJamboreeBracket(view);
@@ -130,41 +120,41 @@ export default async function PublicBracketPage(props: {
 
   return (
     <div className="min-h-screen bg-[url('/images/rinkWlights.png')] bg-cover bg-center bg-fixed">
-      <div className='min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]'>
-        <div className='mx-auto w-full max-w-7xl px-4 py-8 lg:px-6 lg:py-10'>
-          <div className='rounded-[32px] border border-emerald-400/20 bg-slate-950/45 p-5 shadow-2xl backdrop-blur-sm lg:p-8'>
-            <div className='mb-6 rounded-[28px] border border-emerald-400/20 bg-slate-950/70 p-5 text-white shadow-xl backdrop-blur-md lg:p-6'>
-              <div className='flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
+      <div className="min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]">
+        <div className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-6 lg:py-10">
+          <div className="rounded-[32px] border border-emerald-400/20 bg-slate-950/45 p-5 shadow-2xl backdrop-blur-sm lg:p-8">
+            <div className="mb-6 rounded-[28px] border border-emerald-400/20 bg-slate-950/70 p-5 text-white shadow-xl backdrop-blur-md lg:p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <div className='mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-400/20'>
-                    <Trophy className='h-7 w-7' />
+                  <div className="mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-400/20">
+                    <Trophy className="h-7 w-7" />
                   </div>
 
-                  <div className='text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300'>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
                     FHA Tournament Hub
                   </div>
 
-                  <h1 className='mt-2 text-3xl font-bold text-white lg:text-5xl'>
+                  <h1 className="mt-2 text-3xl font-bold text-white lg:text-5xl">
                     {view.bracket.name}
                   </h1>
 
-                  <div className='mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-200 lg:text-base'>
-                    <span className='inline-flex items-center gap-1.5'>
-                      <Trophy className='h-4 w-4 text-emerald-300' />
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-200 lg:text-base">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Trophy className="h-4 w-4 text-emerald-300" />
                       {view.bracket.youthLevel}
                     </span>
 
-                    <span className='text-emerald-300/70'>•</span>
+                    <span className="text-emerald-300/70">•</span>
 
-                    <span className='inline-flex items-center gap-1.5'>
-                      <CalendarDays className='h-4 w-4 text-emerald-300' />
+                    <span className="inline-flex items-center gap-1.5">
+                      <CalendarDays className="h-4 w-4 text-emerald-300" />
                       {formatBracketDateRange(view.bracket.date)}
                     </span>
 
                     {isJamboree ? (
                       <>
-                        <span className='text-emerald-300/70'>•</span>
-                        <span className='inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200'>
+                        <span className="text-emerald-300/70">•</span>
+                        <span className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
                           Mite Jamboree
                         </span>
                       </>
@@ -174,80 +164,51 @@ export default async function PublicBracketPage(props: {
               </div>
             </div>
 
-            <PublicSponsorsSection
-              sponsors={headerSponsors}
-              placement='HEADER'
-              title='Tournament Sponsors'
-              description='Support the businesses that help make this tournament possible.'
-            />
-
             {isImageBased ? (
-              <>
-                <PublicSponsorsSection
-                  sponsors={bracketSponsors}
-                  placement='BRACKET'
-                />
-
-                <div className='rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md lg:p-6'>
-                  {view.bracket.image ? (
-                    <div className='overflow-hidden rounded-[24px] border border-emerald-400/15 bg-white/5'>
-                      <div className='relative aspect-[4/5] w-full bg-slate-950/40 sm:aspect-[16/14] lg:aspect-[16/12]'>
-                        <Image
-                          src={view.bracket.image}
-                          alt={`${view.bracket.name} bracket image`}
-                          fill
-                          className='object-contain'
-                          sizes='(max-width: 1024px) 100vw, 1200px'
-                          priority
-                        />
-                      </div>
+              <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md lg:p-6">
+                {view.bracket.image ? (
+                  <div className="overflow-hidden rounded-[24px] border border-emerald-400/15 bg-white/5">
+                    <div className="relative aspect-[4/5] w-full bg-slate-950/40 sm:aspect-[16/14] lg:aspect-[16/12]">
+                      <Image
+                        src={view.bracket.image}
+                        alt={`${view.bracket.name} bracket image`}
+                        fill
+                        className="object-contain"
+                        sizes="(max-width: 1024px) 100vw, 1200px"
+                        priority
+                      />
                     </div>
-                  ) : (
-                    <div className='rounded-2xl border border-dashed border-emerald-400/20 bg-white/5 p-8 text-sm text-slate-300'>
-                      No bracket image is available yet.
-                    </div>
-                  )}
-                </div>
-              </>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-emerald-400/20 bg-white/5 p-8 text-sm text-slate-300">
+                    No bracket image is available yet.
+                  </div>
+                )}
+              </div>
             ) : isJamboree ? (
-              <>
-                <PublicSponsorsSection
-                  sponsors={scheduleSponsors}
-                  placement='SCHEDULE'
-                />
-                <JamboreeSchedule games={jamboreeGames} />
-              </>
+              <JamboreeSchedule games={jamboreeGames} />
             ) : (
-              <div className='space-y-6'>
-                <PublicSponsorsSection
-                  sponsors={standingsSponsors}
-                  placement='STANDINGS'
-                />
-
-                <div className='rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md'>
-                  <StandingsTable standings={standings} title='Pool Standings' />
+              <div className="space-y-6">
+                <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
+                  <StandingsTable standings={standings} title="Pool Standings" />
                 </div>
 
-                <PublicSponsorsSection
-                  sponsors={scheduleSponsors}
-                  placement='SCHEDULE'
-                />
-
-                <div className='rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md'>
-                  <PoolSchedule title='Pool Play' byDay={poolByDay} />
+                <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
+                  <PoolSchedule title="Pool Play" byDay={poolByDay} />
                 </div>
 
-                <PublicSponsorsSection
-                  sponsors={bracketSponsors}
-                  placement='BRACKET'
-                />
-
-                <div className='rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md'>
-                  <PoolSchedule title='Placement Games' byDay={placementByDay} />
+                <div className="rounded-[28px] border border-emerald-400/15 bg-slate-950/65 p-4 shadow-xl backdrop-blur-md">
+                  <PoolSchedule title="Placement Games" byDay={placementByDay} />
                 </div>
               </div>
             )}
           </div>
+
+          <PublicSponsorsSection
+            sponsors={sponsors}
+            title="Tournament Sponsors"
+            description="Support the businesses that help make this tournament possible."
+          />
         </div>
       </div>
     </div>

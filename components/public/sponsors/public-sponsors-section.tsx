@@ -2,29 +2,14 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
-import type { PublicSponsor, SponsorPlacement } from '@/lib/queries/publicSponsors';
+import type { PublicSponsor } from '@/lib/queries/publicSponsors';
 
 type PublicSponsorsSectionProps = {
   sponsors: PublicSponsor[];
   title?: string;
   description?: string;
-  placement?: SponsorPlacement;
+  className?: string;
 };
-
-function getDefaultTitle(placement?: SponsorPlacement) {
-  switch (placement) {
-    case 'HEADER':
-      return 'Featured Sponsors';
-    case 'STANDINGS':
-      return 'Standings Sponsors';
-    case 'SCHEDULE':
-      return 'Schedule Sponsors';
-    case 'BRACKET':
-      return 'Bracket Sponsors';
-    default:
-      return 'Sponsors';
-  }
-}
 
 function SponsorCard({ sponsor }: { sponsor: PublicSponsor }) {
   const href = sponsor.linkUrl?.trim() ?? '';
@@ -93,21 +78,23 @@ function SponsorCard({ sponsor }: { sponsor: PublicSponsor }) {
 
 export default function PublicSponsorsSection({
   sponsors,
-  title,
+  title = 'Sponsors',
   description,
-  placement,
+  className = '',
 }: PublicSponsorsSectionProps) {
   if (sponsors.length === 0) return null;
 
   return (
-    <section className='mt-6 rounded-[32px] border border-emerald-400/20 bg-slate-950/45 p-5 shadow-2xl backdrop-blur-sm lg:p-8'>
+    <section
+      className={`mt-6 rounded-[32px] border border-emerald-400/20 bg-slate-950/45 p-5 shadow-2xl backdrop-blur-sm lg:p-8 ${className}`}
+    >
       <div className='mb-6'>
         <div className='text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300'>
           FHA Tournament Hub
         </div>
 
         <h2 className='mt-2 text-2xl font-bold text-white lg:text-3xl'>
-          {title ?? getDefaultTitle(placement)}
+          {title}
         </h2>
 
         {description ? (

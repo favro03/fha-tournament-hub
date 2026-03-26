@@ -25,12 +25,7 @@ import {
 } from '@/components/ui/form';
 
 const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
-const sponsorPlacementValues = [
-  'HEADER',
-  'SCHEDULE',
-  'STANDINGS',
-  'BRACKET',
-] as const;
+const sponsorPlacementValues = ['HOME', 'TOURNAMENT', 'STANDINGS'] as const;
 
 const sponsorEditFormSchema = z
   .object({
@@ -84,7 +79,7 @@ type SponsorEditFormProps = {
     bodyText: string | null;
     buttonText: string | null;
     linkUrl: string | null;
-    placement: 'HEADER' | 'SCHEDULE' | 'STANDINGS' | 'BRACKET';
+    placement: 'HOME' | 'TOURNAMENT' | 'STANDINGS';
     scope: 'GLOBAL' | 'TOURNAMENT';
     tournamentId: number | null;
     isActive: boolean;
@@ -103,16 +98,27 @@ function tournamentOptionLabel(tournament: TournamentOption) {
 
 function placementLabel(value: (typeof sponsorPlacementValues)[number]) {
   switch (value) {
-    case 'HEADER':
-      return 'Header';
-    case 'SCHEDULE':
-      return 'Schedule';
+    case 'HOME':
+      return 'Homepage';
+    case 'TOURNAMENT':
+      return 'Tournament Page';
     case 'STANDINGS':
-      return 'Standings';
-    case 'BRACKET':
-      return 'Bracket';
+      return 'Standings Page';
     default:
       return value;
+  }
+}
+
+function placementHelpText(value: (typeof sponsorPlacementValues)[number]) {
+  switch (value) {
+    case 'HOME':
+      return 'Shows in the grouped sponsor section at the bottom of the homepage.';
+    case 'TOURNAMENT':
+      return 'Shows in the grouped sponsor section at the bottom of the tournament page.';
+    case 'STANDINGS':
+      return 'Shows in the grouped sponsor section at the bottom of the standings page.';
+    default:
+      return '';
   }
 }
 
@@ -143,6 +149,7 @@ export function SponsorEditForm({
 
   const scope = form.watch('scope');
   const imageUrl = form.watch('imageUrl');
+  const placement = form.watch('placement');
 
   useEffect(() => {
     if (scope === 'GLOBAL') {
@@ -200,7 +207,7 @@ export function SponsorEditForm({
       <div>
         <h2 className='text-lg font-semibold text-white'>Edit Sponsor</h2>
         <p className='mt-1 text-sm text-white/65'>
-          Update sponsor details, scope, placement, status, and ordering.
+          Update sponsor details, page placement, scope, status, and ordering.
         </p>
       </div>
 
@@ -294,7 +301,7 @@ export function SponsorEditForm({
               name='placement'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Placement</FormLabel>
+                  <FormLabel>Page Placement</FormLabel>
                   <FormControl>
                     <select
                       className={selectClassName()}
@@ -304,17 +311,20 @@ export function SponsorEditForm({
                       name={field.name}
                       ref={field.ref}
                     >
-                      {sponsorPlacementValues.map((placement) => (
+                      {sponsorPlacementValues.map((placementValue) => (
                         <option
-                          key={placement}
+                          key={placementValue}
                           className='bg-[#0f2217] text-white'
-                          value={placement}
+                          value={placementValue}
                         >
-                          {placementLabel(placement)}
+                          {placementLabel(placementValue)}
                         </option>
                       ))}
                     </select>
                   </FormControl>
+                  <p className='text-sm text-white/60'>
+                    {placementHelpText(placement)}
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -346,6 +356,11 @@ export function SponsorEditForm({
                       </option>
                     </select>
                   </FormControl>
+                  <p className='text-sm text-white/60'>
+                    Global sponsors can appear across the site. Tournament-specific
+                    sponsors only appear on the assigned tournament or its related
+                    standings view.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -412,6 +427,9 @@ export function SponsorEditForm({
                       ref={field.ref}
                     />
                   </FormControl>
+                  <p className='text-sm text-white/60'>
+                    Lower numbers show first within the grouped sponsor section.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -444,7 +462,8 @@ export function SponsorEditForm({
             />
 
             <div className='rounded-md border border-white/10 bg-black/15 p-4 text-sm text-white/70'>
-              Placement controls where the sponsor appears on the public pages.
+              Sponsors are grouped together at the bottom of each public page,
+              not split into multiple sections.
             </div>
           </div>
 

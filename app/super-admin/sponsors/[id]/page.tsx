@@ -52,6 +52,21 @@ function getScopeSummary(
   return tournamentName ? `Tournament • ${tournamentName}` : 'Tournament';
 }
 
+function getPlacementSummary(
+  placement: 'HOME' | 'TOURNAMENT' | 'STANDINGS'
+) {
+  switch (placement) {
+    case 'HOME':
+      return 'Homepage';
+    case 'TOURNAMENT':
+      return 'Tournament Page';
+    case 'STANDINGS':
+      return 'Standings Page';
+    default:
+      return placement;
+  }
+}
+
 export default async function SponsorDetailPage({
   params,
 }: SponsorDetailPageProps) {
@@ -148,9 +163,11 @@ export default async function SponsorDetailPage({
 
             <div className='rounded-lg border border-white/10 bg-black/15 p-4'>
               <div className='text-xs uppercase tracking-wide text-white/50'>
-                Placement
+                Page Placement
               </div>
-              <div className='mt-1 text-sm text-white'>{sponsor.placement}</div>
+              <div className='mt-1 text-sm text-white'>
+                {getPlacementSummary(sponsor.placement)}
+              </div>
             </div>
 
             <div className='rounded-lg border border-white/10 bg-black/15 p-4'>

@@ -12,10 +12,9 @@ enum UserRole {
 }
 
 enum SponsorPlacement {
-  HEADER
-  SCHEDULE
+  HOME
   STANDINGS
-  BRACKET
+  TOURNAMENT
 }
 
 enum SponsorScope {

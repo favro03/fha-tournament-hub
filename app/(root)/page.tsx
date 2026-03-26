@@ -1,126 +1,206 @@
 import Link from 'next/link';
-import {
-  ChevronRight,
-  Hotel,
-  Trophy,
-  UtensilsCrossed,
-  ScrollText,
-  BarChart3,
-} from 'lucide-react';
-
-import HomepageTicker from '@/components/home/homepage-ticker';
+import { redirect } from 'next/navigation';
+import { Trophy, CalendarDays } from 'lucide-react';
+import StandingsTable from '@/components/brackets/StandingsTable';
 import PublicSponsorsSection from '@/components/public/sponsors/public-sponsors-section';
-import { getGlobalPublicSponsors } from '@/lib/queries/publicSponsors';
+import { getBracketStandingsView } from '@/lib/queries/bracketStandings';
+import {
+  getCurrentTournament,
+  getNextTournament,
+} from '@/lib/queries/currentTournament';
+import { getStandingsPageSponsors } from '@/lib/queries/publicSponsors';
+import { prisma } from '@/lib/prisma';
+import { parseDateRange } from '@/lib/utils';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
-type HomeCardProps = {
-  href: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  className?: string;
-};
+function formatDateMMDDYYYY(dateStr?: string | null) {
+  if (!dateStr) return '';
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (!Number.isFinite(d.getTime())) return dateStr;
 
-function HomeCard({
-  href,
-  title,
-  description,
-  icon,
-  className = '',
-}: HomeCardProps) {
-  return (
-    <Link
-      href={href}
-      className={`group relative overflow-hidden rounded-[28px] border border-white/12 bg-slate-950/70 p-6 text-white shadow-2xl backdrop-blur-md transition duration-300 hover:-translate-y-1 hover:border-emerald-400/40 hover:bg-slate-900/80 ${className}`}
-    >
-      <div className='absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(250,204,21,0.16),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.06),transparent_45%)]' />
-      <div className='relative z-10 flex h-full flex-col'>
-        <div className='mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-emerald-300 ring-1 ring-white/10'>
-          {icon}
-        </div>
-
-        <h2 className='mt-2 text-2xl font-bold leading-tight'>{title}</h2>
-        <p className='mt-3 max-w-sm text-sm text-slate-200'>{description}</p>
-
-        <div className='mt-auto pt-6'>
-          <span className='inline-flex items-center gap-2 text-sm font-semibold text-emerald-300'>
-            Open
-            <ChevronRight className='h-4 w-4 transition group-hover:translate-x-1' />
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
+  return d.toLocaleDateString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  });
 }
 
-export default async function Homepage() {
-  const headerSponsors = await getGlobalPublicSponsors({ placement: 'HEADER' });
+function formatBracketDateRange(dateRange: string) {
+  if (!dateRange) return '';
 
-  return (
-    <div className="min-h-screen bg-[url('/images/rinkWlights.png')] bg-cover bg-center bg-fixed">
-      <div className='min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]'>
-        <div className='mx-auto max-w-7xl px-4 py-6 lg:px-6 lg:py-8'>
-          <HomepageTicker />
+  const parts = dateRange.split(' to ').map((s) => s.trim());
 
-          <div className='mt-6 rounded-[32px] border border-emerald-400/20 bg-[rgba(6,29,22,0.52)] p-5 shadow-2xl backdrop-blur-sm lg:p-8'>
-            <div className='mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
-              <div>
-                <h1 className='mt-2 text-3xl font-bold text-white lg:text-4xl'>
-                  See what’s happening in the tournament right now.
-                </h1>
-                <p className='mt-3 max-w-4xl text-sm text-slate-200 lg:text-base'>
-                  Check the current bracket, view live standings, see upcoming
-                  games, and find the tournament details you need.
-                </p>
+  if (parts.length === 2) {
+    return `${formatDateMMDDYYYY(parts[0])}–${formatDateMMDDYYYY(parts[1])}`;
+  }
+
+  return formatDateMMDDYYYY(dateRange);
+}
+
+function dateOnly(dateStr: string, endOfDay = false) {
+  const time = endOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+  const d = new Date(`${dateStr}${time}`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function getBracketBounds(dateRange: string) {
+  const { startDate, endDate } = parseDateRange(dateRange);
+  const start = startDate ? dateOnly(startDate, false) : null;
+  const end = endDate
+    ? dateOnly(endDate, true)
+    : startDate
+      ? dateOnly(startDate, true)
+      : null;
+
+  return { start, end };
+}
+
+function isImageBasedBracket(bracket: {
+  image?: string | null;
+  tournamentFormat?: string | null;
+}) {
+  const image = String(bracket.image ?? '').trim();
+  const tournamentFormat = String(bracket.tournamentFormat ?? '').trim();
+
+  return tournamentFormat === 'IMAGE_UPLOAD' || image.length > 0;
+}
+
+async function hasCurrentOrUpcomingImageBasedHomeBracket() {
+  const now = new Date();
+
+  const brackets = await prisma.bracket.findMany({
+    where: {
+      side: 'HOME',
+    },
+    select: {
+      id: true,
+      date: true,
+      image: true,
+      tournamentFormat: true,
+    },
+    orderBy: [{ date: 'asc' }, { name: 'asc' }],
+  });
+
+  return brackets.some((bracket) => {
+    if (!isImageBasedBracket(bracket)) return false;
+
+    const { start, end } = getBracketBounds(bracket.date);
+    if (!start) return false;
+
+    if (end && now >= start && now <= end) return true;
+    return start >= now;
+  });
+}
+
+export default async function CurrentStandingsPage() {
+  const currentTournament = await getCurrentTournament();
+  const sponsors = await getStandingsPageSponsors(currentTournament?.id ?? null);
+
+  if (!currentTournament) {
+    const hasImageBasedBracket = await hasCurrentOrUpcomingImageBasedHomeBracket();
+
+    if (hasImageBasedBracket) {
+      redirect('/brackets');
+    }
+
+    const nextTournament = await getNextTournament();
+
+    return (
+      <div className="min-h-screen bg-[url('/images/rinkWlights.png')] bg-cover bg-center bg-fixed">
+        <div className="min-h-screen bg-slate-950/70">
+          <div className="mx-auto max-w-6xl px-4 py-10">
+            <div className="rounded-[28px] border border-white/15 bg-slate-950/75 p-8 text-white shadow-2xl backdrop-blur-md">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-200">
+                Current Standings
               </div>
+              <h1 className="mt-2 text-3xl font-bold">No active tournament right now</h1>
+              <p className="mt-3 text-slate-200">
+                Standings will appear here automatically when a home tournament is active.
+              </p>
+
+              {nextTournament ? (
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-200">
+                    Next Tournament
+                  </div>
+                  <h2 className="mt-2 text-2xl font-bold">{nextTournament.name}</h2>
+                  <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-200">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Trophy className="h-4 w-4 text-emerald-300" />
+                      {nextTournament.youthLevel}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <CalendarDays className="h-4 w-4 text-emerald-300" />
+                      {formatBracketDateRange(nextTournament.date)}
+                    </span>
+                  </div>
+
+                  <div className="mt-5">
+                    <Link
+                      href={`/brackets/${nextTournament.id}`}
+                      className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
+                    >
+                      View Tournament
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            <div className='grid auto-rows-[minmax(220px,1fr)] gap-4 md:grid-cols-2 xl:grid-cols-4'>
-              <HomeCard
-                href='/brackets'
-                title='Brackets'
-                description='See tournament schedules, pool play, placement games, and live results.'
-                icon={<Trophy className='h-7 w-7' />}
-                className='xl:col-span-2'
-              />
+            <PublicSponsorsSection
+              sponsors={sponsors}
+              title="Standings Sponsors"
+              description="Thank you to the businesses that support Faribault Hockey and tournament weekends."
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-              <HomeCard
-                href='/standings'
-                title='Current Standings'
-                description='Jump straight to the active tournament standings without opening the full bracket first.'
-                icon={<BarChart3 className='h-7 w-7' />}
-              />
+  const standings = await getBracketStandingsView(currentTournament.id);
 
-              <HomeCard
-                href='/rules'
-                title='Tournament Rules'
-                description='Review tournament rules, structure, and key event information.'
-                icon={<ScrollText className='h-7 w-7' />}
-              />
+  if (!standings) {
+    redirect('/brackets');
+  }
 
-              <HomeCard
-                href='/hotels'
-                title='Hotels'
-                description='Find lodging options for traveling teams and families.'
-                icon={<Hotel className='h-7 w-7' />}
-              />
+  return (
+    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(3,18,12,0.58)_0%,rgba(6,28,18,0.72)_38%,rgba(2,10,8,0.88)_100%)]">
+      <div className="min-h-screen bg-slate-950/70">
+        <div className="mx-auto max-w-6xl px-4 py-10">
+          <div className="mb-6 rounded-[28px] border border-white/15 bg-slate-950/75 p-6 text-white shadow-2xl backdrop-blur-md">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-200">
+              Current Tournament Standings
+            </div>
+            <h1 className="mt-2 text-3xl font-bold">{currentTournament.name}</h1>
+            <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-200">
+              <span className="inline-flex items-center gap-1.5">
+                <Trophy className="h-4 w-4 text-emerald-300" />
+                {currentTournament.youthLevel}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays className="h-4 w-4 text-emerald-300" />
+                {formatBracketDateRange(currentTournament.date)}
+              </span>
+            </div>
 
-              <HomeCard
-                href='/restaurants'
-                title='Food & Restaurants'
-                description='Quick access to nearby places to eat between games.'
-                icon={<UtensilsCrossed className='h-7 w-7' />}
-                className='md:col-span-2 xl:col-span-2'
-              />
+            <div className="mt-5">
+              <Link
+                href={`/brackets/${currentTournament.id}`}
+                className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
+              >
+                Open Tournament Page
+              </Link>
             </div>
           </div>
 
+          <StandingsTable standings={standings} title="Current Pool Standings" />
+
           <PublicSponsorsSection
-            sponsors={headerSponsors}
-            placement='HEADER'
-            title='Our Sponsors'
-            description='Thank you to the businesses that support Faribault Hockey and help make tournament weekends possible.'
+            sponsors={sponsors}
+            title="Standings Sponsors"
+            description="Thank you to the businesses that support Faribault Hockey and tournament weekends."
           />
         </div>
       </div>

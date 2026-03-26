@@ -26,19 +26,32 @@ function formatDate(value: Date) {
 }
 
 function getPlacementClasses(
-  placement: 'HEADER' | 'SCHEDULE' | 'STANDINGS' | 'BRACKET'
+  placement: 'HOME' | 'TOURNAMENT' | 'STANDINGS'
 ) {
   switch (placement) {
-    case 'HEADER':
+    case 'HOME':
       return 'border border-sky-500/30 bg-sky-500/15 text-sky-300';
-    case 'SCHEDULE':
-      return 'border border-amber-500/30 bg-amber-500/15 text-amber-300';
+    case 'TOURNAMENT':
+      return 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-300';
     case 'STANDINGS':
       return 'border border-violet-500/30 bg-violet-500/15 text-violet-300';
-    case 'BRACKET':
-      return 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-300';
     default:
       return 'border border-white/15 bg-white/10 text-white';
+  }
+}
+
+function getPlacementLabel(
+  placement: 'HOME' | 'TOURNAMENT' | 'STANDINGS'
+) {
+  switch (placement) {
+    case 'HOME':
+      return 'Homepage';
+    case 'TOURNAMENT':
+      return 'Tournament Page';
+    case 'STANDINGS':
+      return 'Standings Page';
+    default:
+      return placement;
   }
 }
 
@@ -82,8 +95,7 @@ export default async function SuperAdminSponsorsPage() {
         <div>
           <h1 className='text-3xl font-bold text-white'>Sponsors</h1>
           <p className='mt-1 text-sm text-white/65'>
-            Manage site-wide and tournament-specific sponsor records for public
-            pages.
+            Manage homepage, tournament page, and standings page sponsor records.
           </p>
         </div>
 
@@ -96,7 +108,7 @@ export default async function SuperAdminSponsorsPage() {
         <TableHeader>
           <TableRow>
             <TableHead>Business</TableHead>
-            <TableHead>Placement</TableHead>
+            <TableHead>Page</TableHead>
             <TableHead>Scope</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Sort Order</TableHead>
@@ -129,7 +141,7 @@ export default async function SuperAdminSponsorsPage() {
                         sponsor.placement
                       )}`}
                     >
-                      {sponsor.placement}
+                      {getPlacementLabel(sponsor.placement)}
                     </span>
                   </TableCell>
 

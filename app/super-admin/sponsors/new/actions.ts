@@ -7,12 +7,7 @@ import { prisma } from '@/db/prisma';
 import { requireSuperAdmin } from '@/lib/auth/guards';
 
 const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
-const sponsorPlacementValues = [
-  'HEADER',
-  'SCHEDULE',
-  'STANDINGS',
-  'BRACKET',
-] as const;
+const sponsorPlacementValues = ['HOME', 'TOURNAMENT', 'STANDINGS'] as const;
 
 const createSponsorSchema = z
   .object({
@@ -119,6 +114,7 @@ export async function createSponsor(
     revalidatePath('/super-admin/sponsors');
     revalidatePath('/');
     revalidatePath('/brackets');
+    revalidatePath('/standings');
 
     return {
       success: true,

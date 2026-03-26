@@ -2,11 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Trophy, CalendarDays } from "lucide-react";
 import StandingsTable from "@/components/brackets/StandingsTable";
+import PublicSponsorsSection from "@/components/public/sponsors/public-sponsors-section";
 import { getBracketStandingsView } from "@/lib/queries/bracketStandings";
 import {
   getCurrentTournament,
   getNextTournament,
 } from "@/lib/queries/currentTournament";
+import { getStandingsPageSponsors } from "@/lib/queries/publicSponsors";
 import { prisma } from "@/lib/prisma";
 import { parseDateRange } from "@/lib/utils";
 
@@ -93,6 +95,7 @@ async function hasCurrentOrUpcomingImageBasedHomeBracket() {
 
 export default async function CurrentStandingsPage() {
   const currentTournament = await getCurrentTournament();
+  const sponsors = await getStandingsPageSponsors(currentTournament?.id ?? null);
 
   if (!currentTournament) {
     const hasImageBasedBracket = await hasCurrentOrUpcomingImageBasedHomeBracket();
@@ -144,6 +147,12 @@ export default async function CurrentStandingsPage() {
                 </div>
               ) : null}
             </div>
+
+            <PublicSponsorsSection
+              sponsors={sponsors}
+              title="Standings Sponsors"
+              description="Thank you to the businesses that support Faribault Hockey and tournament weekends."
+            />
           </div>
         </div>
       </div>
@@ -187,6 +196,12 @@ export default async function CurrentStandingsPage() {
           </div>
 
           <StandingsTable standings={standings} title="Current Pool Standings" />
+
+          <PublicSponsorsSection
+            sponsors={sponsors}
+            title="Standings Sponsors"
+            description="Thank you to the businesses that support Faribault Hockey and tournament weekends."
+          />
         </div>
       </div>
     </div>

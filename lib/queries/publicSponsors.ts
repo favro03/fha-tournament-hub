@@ -1,6 +1,6 @@
 import { prisma } from '@/db/prisma';
 
-export type SponsorPlacement = 'HEADER' | 'SCHEDULE' | 'STANDINGS' | 'BRACKET';
+export type SponsorPlacement = 'HOME' | 'TOURNAMENT' | 'STANDINGS';
 export type SponsorScope = 'GLOBAL' | 'TOURNAMENT';
 
 export type PublicSponsor = {
@@ -33,18 +33,18 @@ const publicSponsorSelect = {
   sortOrder: true,
 } as const;
 
-type SponsorQueryOptions = {
-  placement?: SponsorPlacement;
-};
-
-export async function getGlobalPublicSponsors(
-  options: SponsorQueryOptions = {}
+async function getSponsorsByPlacement(
+  placement: SponsorPlacement,
+  tournamentId?: number | null
 ): Promise<PublicSponsor[]> {
   const sponsors = await prisma.sponsor.findMany({
     where: {
       isActive: true,
-      scope: 'GLOBAL',
-      ...(options.placement ? { placement: options.placement } : {}),
+      placement,
+      OR:
+        typeof tournamentId === 'number'
+          ? [{ scope: 'GLOBAL' }, { scope: 'TOURNAMENT', tournamentId }]
+          : [{ scope: 'GLOBAL' }],
     },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     select: publicSponsorSelect,
@@ -53,25 +53,18 @@ export async function getGlobalPublicSponsors(
   return sponsors;
 }
 
-export async function getPublicSponsorsForTournament(
-  tournamentId: number,
-  options: SponsorQueryOptions = {}
-): Promise<PublicSponsor[]> {
-  const sponsors = await prisma.sponsor.findMany({
-    where: {
-      isActive: true,
-      ...(options.placement ? { placement: options.placement } : {}),
-      OR: [
-        { scope: 'GLOBAL' },
-        {
-          scope: 'TOURNAMENT',
-          tournamentId,
-        },
-      ],
-    },
-    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-    select: publicSponsorSelect,
-  });
+export async function getHomepagePublicSponsors(): Promise<PublicSponsor[]> {
+  return getSponsorsByPlacement('HOME');
+}
 
-  return sponsors;
+export async function getTournamentPageSponsors(
+  tournamentId: number
+): Promise<PublicSponsor[]> {
+  return getSponsorsByPlacement('TOURNAMENT', tournamentId);
+}
+
+export async function getStandingsPageSponsors(
+  tournamentId?: number | null
+): Promise<PublicSponsor[]> {
+  return getSponsorsByPlacement('STANDINGS', tournamentId);
 }

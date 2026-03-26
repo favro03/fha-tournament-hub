@@ -8,12 +8,7 @@ import { prisma } from '@/db/prisma';
 import { requireSuperAdmin } from '@/lib/auth/guards';
 
 const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
-const sponsorPlacementValues = [
-  'HEADER',
-  'SCHEDULE',
-  'STANDINGS',
-  'BRACKET',
-] as const;
+const sponsorPlacementValues = ['HOME', 'TOURNAMENT', 'STANDINGS'] as const;
 
 const updateSponsorSchema = z
   .object({
@@ -132,6 +127,7 @@ export async function updateSponsor(
     revalidatePath(`/super-admin/sponsors/${data.sponsorId}`);
     revalidatePath('/');
     revalidatePath('/brackets');
+    revalidatePath('/standings');
 
     return {
       success: true,
@@ -171,6 +167,7 @@ export async function deleteSponsor(sponsorId: number) {
     revalidatePath('/super-admin/sponsors');
     revalidatePath('/');
     revalidatePath('/brackets');
+    revalidatePath('/standings');
   } catch (error) {
     console.error('deleteSponsor error', error);
   }
