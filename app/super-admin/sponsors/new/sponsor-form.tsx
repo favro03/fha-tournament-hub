@@ -25,6 +25,12 @@ import {
 } from '@/components/ui/form';
 
 const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
+const sponsorPlacementValues = [
+  'HEADER',
+  'SCHEDULE',
+  'STANDINGS',
+  'BRACKET',
+] as const;
 
 const sponsorFormSchema = z
   .object({
@@ -40,6 +46,7 @@ const sponsorFormSchema = z
       .refine((value) => !value || /^https?:\/\//i.test(value), {
         message: 'Link URL must start with http:// or https://',
       }),
+    placement: z.enum(sponsorPlacementValues),
     scope: z.enum(sponsorScopeValues),
     tournamentId: z
       .union([z.literal(''), z.coerce.number().int().positive()])
@@ -79,6 +86,21 @@ function tournamentOptionLabel(tournament: TournamentOption) {
   return `${tournament.name} • ${tournament.youthLevel} • ${tournament.date}`;
 }
 
+function placementLabel(value: (typeof sponsorPlacementValues)[number]) {
+  switch (value) {
+    case 'HEADER':
+      return 'Header';
+    case 'SCHEDULE':
+      return 'Schedule';
+    case 'STANDINGS':
+      return 'Standings';
+    case 'BRACKET':
+      return 'Bracket';
+    default:
+      return value;
+  }
+}
+
 export function SponsorForm({ tournaments }: SponsorFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -92,6 +114,7 @@ export function SponsorForm({ tournaments }: SponsorFormProps) {
       bodyText: '',
       buttonText: '',
       linkUrl: '',
+      placement: 'HEADER',
       scope: 'GLOBAL',
       tournamentId: '',
       isActive: true,
@@ -230,6 +253,37 @@ export function SponsorForm({ tournaments }: SponsorFormProps) {
           <div className='grid gap-6 md:grid-cols-2'>
             <FormField
               control={form.control}
+              name='placement'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Placement</FormLabel>
+                  <FormControl>
+                    <select
+                      className={selectClassName()}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    >
+                      {sponsorPlacementValues.map((placement) => (
+                        <option
+                          key={placement}
+                          className='bg-[#0f2217] text-white'
+                          value={placement}
+                        >
+                          {placementLabel(placement)}
+                        </option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name='scope'
               render={({ field }) => (
                 <FormItem>
@@ -258,7 +312,9 @@ export function SponsorForm({ tournaments }: SponsorFormProps) {
                 </FormItem>
               )}
             />
+          </div>
 
+          <div className='grid gap-6 md:grid-cols-2'>
             <FormField
               control={form.control}
               name='tournamentId'
@@ -295,9 +351,7 @@ export function SponsorForm({ tournaments }: SponsorFormProps) {
                 </FormItem>
               )}
             />
-          </div>
 
-          <div className='grid gap-6 md:grid-cols-2'>
             <FormField
               control={form.control}
               name='sortOrder'
@@ -324,7 +378,9 @@ export function SponsorForm({ tournaments }: SponsorFormProps) {
                 </FormItem>
               )}
             />
+          </div>
 
+          <div className='grid gap-6 md:grid-cols-2'>
             <FormField
               control={form.control}
               name='isActive'
@@ -348,6 +404,10 @@ export function SponsorForm({ tournaments }: SponsorFormProps) {
                 </FormItem>
               )}
             />
+
+            <div className='rounded-md border border-white/10 bg-black/15 p-4 text-sm text-white/70'>
+              Placement controls where the sponsor appears on the public pages.
+            </div>
           </div>
 
           <FormField

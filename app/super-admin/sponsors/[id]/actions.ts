@@ -8,6 +8,12 @@ import { prisma } from '@/db/prisma';
 import { requireSuperAdmin } from '@/lib/auth/guards';
 
 const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
+const sponsorPlacementValues = [
+  'HEADER',
+  'SCHEDULE',
+  'STANDINGS',
+  'BRACKET',
+] as const;
 
 const updateSponsorSchema = z
   .object({
@@ -24,6 +30,7 @@ const updateSponsorSchema = z
       .refine((value) => !value || /^https?:\/\//i.test(value), {
         message: 'Link URL must start with http:// or https://',
       }),
+    placement: z.enum(sponsorPlacementValues),
     scope: z.enum(sponsorScopeValues),
     tournamentId: z.coerce.number().int().positive().nullable().optional(),
     isActive: z.boolean(),
@@ -113,6 +120,7 @@ export async function updateSponsor(
         bodyText: emptyToNull(data.bodyText),
         buttonText: emptyToNull(data.buttonText),
         linkUrl: emptyToNull(data.linkUrl),
+        placement: data.placement,
         scope: data.scope,
         tournamentId,
         isActive: data.isActive,
@@ -122,6 +130,8 @@ export async function updateSponsor(
 
     revalidatePath('/super-admin/sponsors');
     revalidatePath(`/super-admin/sponsors/${data.sponsorId}`);
+    revalidatePath('/');
+    revalidatePath('/brackets');
 
     return {
       success: true,
@@ -159,6 +169,8 @@ export async function deleteSponsor(sponsorId: number) {
     });
 
     revalidatePath('/super-admin/sponsors');
+    revalidatePath('/');
+    revalidatePath('/brackets');
   } catch (error) {
     console.error('deleteSponsor error', error);
   }

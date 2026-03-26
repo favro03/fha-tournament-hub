@@ -197,6 +197,7 @@ export default async function SponsorDetailPage({
               bodyText: sponsor.bodyText,
               buttonText: sponsor.buttonText,
               linkUrl: sponsor.linkUrl,
+              placement: sponsor.placement,
               scope: sponsor.scope,
               tournamentId: sponsor.tournamentId,
               isActive: sponsor.isActive,

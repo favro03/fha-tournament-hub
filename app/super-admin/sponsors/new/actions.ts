@@ -7,6 +7,12 @@ import { prisma } from '@/db/prisma';
 import { requireSuperAdmin } from '@/lib/auth/guards';
 
 const sponsorScopeValues = ['GLOBAL', 'TOURNAMENT'] as const;
+const sponsorPlacementValues = [
+  'HEADER',
+  'SCHEDULE',
+  'STANDINGS',
+  'BRACKET',
+] as const;
 
 const createSponsorSchema = z
   .object({
@@ -22,6 +28,7 @@ const createSponsorSchema = z
       .refine((value) => !value || /^https?:\/\//i.test(value), {
         message: 'Link URL must start with http:// or https://',
       }),
+    placement: z.enum(sponsorPlacementValues),
     scope: z.enum(sponsorScopeValues),
     tournamentId: z.coerce.number().int().positive().nullable().optional(),
     isActive: z.boolean(),
@@ -98,7 +105,7 @@ export async function createSponsor(
         bodyText: emptyToNull(data.bodyText),
         buttonText: emptyToNull(data.buttonText),
         linkUrl: emptyToNull(data.linkUrl),
-        placement: 'HEADER',
+        placement: data.placement,
         scope: data.scope,
         isActive: data.isActive,
         sortOrder: data.sortOrder,
@@ -110,6 +117,8 @@ export async function createSponsor(
     });
 
     revalidatePath('/super-admin/sponsors');
+    revalidatePath('/');
+    revalidatePath('/brackets');
 
     return {
       success: true,
