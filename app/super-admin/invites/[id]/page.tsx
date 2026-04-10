@@ -37,24 +37,18 @@ function formatDateTime(value: Date | null) {
   });
 }
 
-function getInviteStatus(invite: {
-  usedAt: Date | null;
-  revokedAt: Date | null;
-}) {
+function getInviteStatus(
+  invite: {
+    usedAt: Date | null;
+    revokedAt: Date | null;
+    expiresAt: Date;
+  },
+  nowMs: number
+) {
   if (invite.usedAt) return 'Accepted';
   if (invite.revokedAt) return 'Revoked';
+  if (invite.expiresAt.getTime() <= nowMs) return 'Expired';
   return 'Pending';
-}
-
-function getStatusClasses(status: string) {
-  switch (status) {
-    case 'Accepted':
-      return 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-300';
-    case 'Revoked':
-      return 'border border-red-500/30 bg-red-500/15 text-red-300';
-    default:
-      return 'border border-sky-500/30 bg-sky-500/15 text-sky-300';
-  }
 }
 
 export default async function SuperAdminInviteDetailPage({
@@ -81,11 +75,34 @@ export default async function SuperAdminInviteDetailPage({
     notFound();
   }
 
-  const status = getInviteStatus(invite);
-  const inviteLink =
-    !invite.usedAt && !invite.revokedAt
-      ? `/accept-invite?token=${invite.token}`
-      : null;
+  const dbNowResult = await prisma.$queryRaw<Array<{ now: Date }>>`
+    SELECT CURRENT_TIMESTAMP as now
+  `;
+
+  const nowMs = new Date(dbNowResult[0].now).getTime();
+
+  const status = getInviteStatus(invite, nowMs);
+  const isActiveInvite =
+    !invite.usedAt &&
+    !invite.revokedAt &&
+    invite.expiresAt.getTime() > nowMs;
+
+  const inviteLink = isActiveInvite
+    ? `/accept-invite?token=${invite.token}`
+    : null;
+
+  function getStatusClasses(status: string) {
+    switch (status) {
+      case 'Accepted':
+        return 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-300';
+      case 'Revoked':
+        return 'border border-red-500/30 bg-red-500/15 text-red-300';
+      case 'Expired':
+        return 'border border-amber-500/30 bg-amber-500/15 text-amber-300';
+      default:
+        return 'border border-sky-500/30 bg-sky-500/15 text-sky-300';
+    }
+  }
 
   return (
     <div className='space-y-6'>
@@ -114,9 +131,7 @@ export default async function SuperAdminInviteDetailPage({
               {status}
             </span>
           </CardTitle>
-          <CardDescription>
-            Invite record for admin access.
-          </CardDescription>
+          <CardDescription>Invite record for admin access.</CardDescription>
         </CardHeader>
 
         <CardContent className='space-y-6'>
@@ -185,7 +200,8 @@ export default async function SuperAdminInviteDetailPage({
           <InviteDetailActions
             inviteId={invite.id}
             inviteLink={inviteLink}
-            canRevoke={!invite.usedAt && !invite.revokedAt}
+            canRevoke={isActiveInvite}
+            expiresAt={formatDateTime(invite.expiresAt)}
           />
         </CardContent>
       </Card>

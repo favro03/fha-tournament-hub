@@ -2,6 +2,7 @@
 
 import { hashSync } from 'bcrypt-ts-edge';
 import { z } from 'zod';
+import { redirect } from 'next/navigation';
 
 import { prisma } from '@/db/prisma';
 
@@ -79,7 +80,7 @@ export async function acceptAdminInvite(
       };
     }
 
-    if (invite.expiresAt.getTime() < Date.now()) {
+    if (invite.expiresAt < new Date()) {
       return {
         success: false,
         message: 'This invite has expired.',
@@ -129,11 +130,18 @@ export async function acceptAdminInvite(
       },
     });
 
-    return {
-      success: true,
-      message: 'Account created successfully. Please sign in.',
-    };
-  } catch (error) {
+    redirect('/sign-in');
+    } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'digest' in error &&
+      typeof error.digest === 'string' &&
+      error.digest.startsWith('NEXT_REDIRECT')
+    ) {
+      throw error;
+    }
+
     console.error('acceptAdminInvite error', error);
 
     return {

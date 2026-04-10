@@ -17,12 +17,25 @@ export const metadata: Metadata = {
   title: 'Super Admin Invites',
 };
 
-function getInviteStatus(invite: {
-  usedAt: Date | null;
-  revokedAt: Date | null;
-}) {
+function formatDate(value: Date) {
+  return value.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function getInviteStatus(
+  invite: {
+    usedAt: Date | null;
+    revokedAt: Date | null;
+    expiresAt: Date;
+  },
+  nowMs: number
+) {
   if (invite.usedAt) return 'Accepted';
   if (invite.revokedAt) return 'Revoked';
+  if (invite.expiresAt.getTime() <= nowMs) return 'Expired';
   return 'Pending';
 }
 
@@ -32,6 +45,8 @@ function getStatusClasses(status: string) {
       return 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
     case 'Revoked':
       return 'bg-red-500/15 text-red-300 border border-red-500/30';
+    case 'Expired':
+      return 'bg-amber-500/15 text-amber-300 border border-amber-500/30';
     default:
       return 'bg-sky-500/15 text-sky-300 border border-sky-500/30';
   }
@@ -40,18 +55,25 @@ function getStatusClasses(status: string) {
 export default async function SuperAdminInvitesPage() {
   await requireSuperAdmin();
 
-  const invites = await prisma.adminInvite.findMany({
-    orderBy: {
-      createdAt: 'desc',
-    },
-    include: {
-      createdBy: {
-        select: {
-          username: true,
+  const [invites, dbNowResult] = await Promise.all([
+    prisma.adminInvite.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        createdBy: {
+          select: {
+            username: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.$queryRaw<Array<{ now: Date }>>`
+      SELECT CURRENT_TIMESTAMP as now
+    `,
+  ]);
+
+  const nowMs = new Date(dbNowResult[0].now).getTime();
 
   return (
     <div className='space-y-6'>
@@ -74,6 +96,7 @@ export default async function SuperAdminInvitesPage() {
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Created</TableHead>
             <TableHead>Expires</TableHead>
             <TableHead>Created By</TableHead>
           </TableRow>
@@ -82,7 +105,7 @@ export default async function SuperAdminInvitesPage() {
         <TableBody>
           {invites.length > 0 ? (
             invites.map((invite) => {
-              const status = getInviteStatus(invite);
+              const status = getInviteStatus(invite, nowMs);
 
               return (
                 <TableRow key={invite.id}>
@@ -104,20 +127,15 @@ export default async function SuperAdminInvitesPage() {
                       {status}
                     </span>
                   </TableCell>
-                  <TableCell>
-                    {invite.expiresAt.toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </TableCell>
+                  <TableCell>{formatDate(invite.createdAt)}</TableCell>
+                  <TableCell>{formatDate(invite.expiresAt)}</TableCell>
                   <TableCell>{invite.createdBy.username}</TableCell>
                 </TableRow>
               );
             })
           ) : (
             <TableRow>
-              <TableCell colSpan={5} className='py-8 text-center text-white/65'>
+              <TableCell colSpan={6} className='py-8 text-center text-white/65'>
                 No invites created yet.
               </TableCell>
             </TableRow>
